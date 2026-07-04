@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Local databases / env
+*.db
+*.sqlite3
+.env
+backend/.env
+frontend/.env
+
+# ML artifacts are generated (reproducibly) by `make train` or the Docker build.
+backend/app/analysis/artifacts/model.joblib
+backend/app/analysis/artifacts/metrics.json
+backend/ml/dataset.csv
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# Local tooling
+.claude/

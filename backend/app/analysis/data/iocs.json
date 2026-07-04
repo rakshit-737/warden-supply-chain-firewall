@@ -1,0 +1,22 @@
+{
+  "_comment": "Demonstration IOC snapshot. Values are synthetic/sinkhole-style examples used for deterministic detection demos, not live threat intel. Replace with a maintained feed in production.",
+  "urls": [
+    "http://malicious-c2.example.net/collect",
+    "https://exfil.badpackage.io/upload",
+    "http://45.driveby.example/loader.py",
+    "https://pastebin.example.com/raw/evilpayload"
+  ],
+  "ips": [
+    "185.220.101.1",
+    "23.94.60.60"
+  ],
+  "wallets": [
+    "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2",
+    "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+  ],
+  "fingerprints": [
+    "__import__('base64').b64decode",
+    "os.environ.get('AWS_SECRET_ACCESS_KEY')",
+    "socket.socket(socket.AF_INET,socket.SOCK_STREAM)"
+  ]
+}
