@@ -7,8 +7,8 @@ Create Date: 2026-01-01 00:00:00
 from typing import Sequence, Union
 
 import sqlalchemy as sa
-from alembic import op
 
+from alembic import op
 from app.db.types import GUID, PortableJSON
 
 revision: str = "0001_initial"
