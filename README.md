@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛡️ Warden — Software Supply-Chain Firewall
+#  Warden — Software Supply-Chain Firewall
 
 **Stop malicious open-source packages *before* they enter your codebase.**
 
