@@ -1,0 +1,97 @@
+# Packaging / distribution metadata for Warden.
+# Tooling config (ruff, pytest, mypy) lives in backend/pyproject.toml and is unaffected.
+#
+# Build locally:   python -m build          (produces dist/*.whl and *.tar.gz)
+# Publish:         handled automatically by .github/workflows/publish.yml on a vX.Y.Z tag
+#                  once PyPI Trusted Publishing is configured (see that file's header).
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "warden-supply-chain-firewall"
+version = "1.0.0"
+description = "Behavioural software supply-chain firewall — statically analyses PyPI packages and fuses rule-based + ML signals into a 0-100 risk score to block malicious & typosquatted dependencies before install."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "rakshit-737" }]
+keywords = [
+  "supply-chain-security",
+  "software-supply-chain",
+  "typosquatting",
+  "malware-detection",
+  "dependency-scanning",
+  "software-composition-analysis",
+  "sca",
+  "devsecops",
+  "appsec",
+  "application-security",
+  "pypi",
+  "package-security",
+  "static-analysis",
+  "vulnerability-scanner",
+  "security",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Framework :: FastAPI",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Information Technology",
+  "Topic :: Security",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: System :: Software Distribution",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+
+# Base install is the lightweight CLI/CI gate (talks to a running Warden API).
+dependencies = [
+  "httpx>=0.28",
+]
+
+[project.optional-dependencies]
+# `pip install "warden-supply-chain-firewall[server]"` for the full analysis engine + API.
+server = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.34",
+  "pydantic>=2.10",
+  "pydantic-settings>=2.7",
+  "email-validator>=2.2",
+  "SQLAlchemy>=2.0",
+  "alembic>=1.14",
+  "psycopg[binary]>=3.2",
+  "PyJWT>=2.10",
+  "argon2-cffi>=23.1",
+  "redis>=5.2",
+  "structlog>=24.4",
+  "scikit-learn>=1.6",
+  "joblib>=1.4",
+  "numpy>=2.2",
+  "python-multipart>=0.0.20",
+]
+
+[project.urls]
+Homepage = "https://github.com/rakshit-737/warden-supply-chain-firewall"
+Repository = "https://github.com/rakshit-737/warden-supply-chain-firewall"
+Documentation = "https://github.com/rakshit-737/warden-supply-chain-firewall/tree/main/docs"
+Issues = "https://github.com/rakshit-737/warden-supply-chain-firewall/issues"
+
+[project.scripts]
+warden = "cli.warden_cli:main"
+
+# Source lives under backend/; expose the app, cli and ml packages (not tests/alembic).
+[tool.setuptools]
+package-dir = { "" = "backend" }
+
+[tool.setuptools.packages.find]
+where = ["backend"]
+include = ["app*", "cli*", "ml*"]
+
+[tool.setuptools.package-data]
+"app.analysis.data" = ["*.json", "*.txt"]

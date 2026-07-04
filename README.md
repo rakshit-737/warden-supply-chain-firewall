@@ -4,6 +4,11 @@
 
 **Stop malicious open-source packages *before* they enter your codebase.**
 
+[![PyPI](https://img.shields.io/pypi/v/warden-supply-chain-firewall.svg)](https://pypi.org/project/warden-supply-chain-firewall/)
+[![Python](https://img.shields.io/pypi/pyversions/warden-supply-chain-firewall.svg)](https://pypi.org/project/warden-supply-chain-firewall/)
+[![CI](https://github.com/rakshit-737/warden-supply-chain-firewall/actions/workflows/ci.yml/badge.svg)](https://github.com/rakshit-737/warden-supply-chain-firewall/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+
 A behavioural firewall for Python dependencies: it fetches and statically analyses a
 package's real code and metadata, fuses rule-based and machine-learning signals into a
 0–100 risk verdict, and enforces organisational policy (allow / warn / block) through a
