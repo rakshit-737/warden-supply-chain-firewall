@@ -1,0 +1,18 @@
+# Grafana datasource provisioning for the Warden X "observability" Compose profile.
+# The fixed uid lets the Warden SOC dashboard default its ${datasource} variable to this source.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: warden-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      # Must match scrape_interval in deploy/prometheus/prometheus.yml so that $__rate_interval
+      # always spans at least four scrapes.
+      timeInterval: 15s
+      prometheusType: Prometheus

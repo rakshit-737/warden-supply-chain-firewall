@@ -1,64 +1,419 @@
+# Warden X - hardened Docker Compose deployment.
+#
+#   cp .env.example .env                              # fill in every REQUIRED value
+#   docker compose up -d --build
+#   docker compose --profile observability up -d      # adds Prometheus + Grafana (create deploy/secrets/metrics_token first)
+#   docker compose --profile worker up -d             # adds the continuous-monitoring worker
+#
+# Dashboard: http://127.0.0.1:8080 (WARDEN_HTTP_BIND / WARDEN_HTTP_PORT). The API is reached through
+# the dashboard origin (/api/v1/...); it publishes no host port. Details: deploy/README.md.
+#
+# Security model
+# * Secrets have no defaults: ${VAR:?} makes Compose refuse to start while one is unset or empty.
+#   Compose checks this for the whole file, including services in profiles that are not enabled.
+#   Prometheus reads the metrics token from a file secret instead (see `secrets:` at the end).
+# * Networks are split by purpose (see `networks:`). db and cache sit only on an internal network with
+#   no host ports and no outbound route; only `web` (and Grafana, when enabled) publish ports, bound
+#   to 127.0.0.1 by default.
+# * Every service: no-new-privileges, all Linux capabilities dropped (db adds back only what its
+#   entrypoint needs), read-only root filesystem with size-capped tmpfs scratch space, memory/CPU/pids
+#   limits and rotated logs. Long-running services also have a healthcheck and a restart policy; the
+#   one-shot `migrate` job has neither. Docker's default seccomp and AppArmor profiles remain in force;
+#   nothing here relaxes them.
+# * Images are pinned by multi-arch index digest; the tag is informational. Digests were resolved from
+#   registry-1.docker.io on 2026-09-15 (deploy/README.md shows how to verify or bump them).
+# * Database migrations run in the one-shot `migrate` job, once per `docker compose up`, before any api
+#   or monitor container starts. Scaled-out api replicas (`--scale api=N`) therefore never apply DDL
+#   concurrently.
+
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  read_only: true
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
+x-api-image: &api-image
+  image: warden-x-api:local
+  build:
+    context: ./backend
+  # Docker's init (tini) runs as PID 1 and reaps child processes (e.g. optional external analysis tools).
+  init: true
+
+x-api-environment: &api-environment
+  ENV: production
+  DEBUG: "false"
+  SECRET_KEY: &secret-key "${SECRET_KEY:?SECRET_KEY must be set (see .env.example)}"
+  FIRST_ADMIN_EMAIL: "${FIRST_ADMIN_EMAIL:-admin@warden.io}"
+  FIRST_ADMIN_PASSWORD: &first-admin-password "${FIRST_ADMIN_PASSWORD:?FIRST_ADMIN_PASSWORD must be set (see .env.example)}"
+  DATABASE_URL: &database-url "postgresql+psycopg://warden:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set (see .env.example)}@db:5432/warden"
+  REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set (see .env.example)}@cache:6379/0"
+  REDIS_OPTIONAL: "false"
+  CORS_ORIGINS: "${WARDEN_PUBLIC_ORIGIN:-http://localhost:8080}"
+  METRICS_ENABLED: "true"
+  METRICS_TOKEN: "${METRICS_TOKEN:?METRICS_TOKEN must be set (see .env.example)}"
+  TMPDIR: /tmp
+
 services:
   db:
-    image: postgres:16-alpine
+    <<: *hardening
+    image: postgres:16.15-alpine3.24@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+    # The postgres entrypoint starts as root to prepare its directories, then re-executes itself as
+    # the `postgres` user. Capabilities added back for exactly that step:
+    #   CHOWN, DAC_OVERRIDE, FOWNER - own and chmod PGDATA and /var/run/postgresql
+    #   SETUID, SETGID              - switch to the postgres user
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     environment:
       POSTGRES_USER: warden
-      POSTGRES_PASSWORD: warden
       POSTGRES_DB: warden
+      # Only applied when the data volume is first initialised (see deploy/README.md to rotate it).
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set (see .env.example)}"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+      - /var/run/postgresql:rw,noexec,nosuid,nodev,size=1m
+    shm_size: 128m
+    networks:
+      - data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U warden"]
-      interval: 5s
+      # TCP instead of the socket: during first-run initialisation the entrypoint's temporary server
+      # listens only on the socket and must not be reported healthy.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U warden -d warden"]
+      interval: 10s
       timeout: 5s
       retries: 10
-    restart: unless-stopped
+      start_period: 30s
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+          pids: 256
 
   cache:
-    image: redis:7-alpine
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    <<: *hardening
+    image: redis:7.4.11-alpine3.21@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+    # Runs directly as the image's unprivileged `redis` user, so the entrypoint never runs as root and
+    # no capability is needed.
+    user: redis
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?REDIS_PASSWORD must be set (see .env.example)}"
+    # The configuration, including requirepass, is fed to redis-server on stdin so the password is not
+    # in its argument list (it is still in this container's environment). No persistence: Redis holds
+    # caches, rate-limit counters and best-effort event streams only. volatile-lru evicts only keys
+    # that have a TTL; once none are left, writes fail instead of silently evicting streams.
+    command:
+      - sh
+      - -c
+      - |
+        exec redis-server - <<EOF
+        requirepass $${REDIS_PASSWORD}
+        save ""
+        appendonly no
+        maxmemory 200mb
+        maxmemory-policy volatile-lru
+        EOF
+    tmpfs:
+      # /data is a VOLUME in the image; a tmpfs avoids creating an anonymous volume (nothing is persisted).
+      - /data:rw,noexec,nosuid,nodev,size=16m
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    networks:
+      - data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 10s
       timeout: 3s
       retries: 10
-    restart: unless-stopped
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+          pids: 64
 
-  api:
-    build: ./backend
+  # One-shot job: applies database migrations (`alembic upgrade head`), then exits. api and monitor
+  # start only after it exited successfully, and no other container runs migrations.
+  migrate:
+    <<: [*hardening, *api-image]
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
     environment:
+      # Only what migrations need. Settings are validated on import, and ENV=production requires a
+      # strong SECRET_KEY and a non-default FIRST_ADMIN_PASSWORD even for this job.
       ENV: production
       DEBUG: "false"
-      SECRET_KEY: ${SECRET_KEY:-please-override-with-a-long-random-secret-value-1234}
-      FIRST_ADMIN_EMAIL: ${FIRST_ADMIN_EMAIL:-admin@warden.io}
-      FIRST_ADMIN_PASSWORD: ${FIRST_ADMIN_PASSWORD:-ChangeMe_Warden!2026}
-      DATABASE_URL: postgresql+psycopg://warden:warden@db:5432/warden
-      REDIS_URL: redis://cache:6379/0
-      REDIS_OPTIONAL: "false"
-      CORS_ORIGINS: http://localhost:8080
+      SECRET_KEY: *secret-key
+      FIRST_ADMIN_PASSWORD: *first-admin-password
+      DATABASE_URL: *database-url
+      TMPDIR: /tmp
     depends_on:
+      db:
+        condition: service_healthy
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    networks:
+      - data  # db only; migrations need no outbound route
+    healthcheck:
+      # The image's HEALTHCHECK probes the API port, which this job never opens.
+      disable: true
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512m
+          pids: 64
+
+  api:
+    <<: [*hardening, *api-image]
+    environment:
+      <<: *api-environment
+      # Only the web (nginx) container may supply X-Forwarded-For / X-Forwarded-Proto.
+      TRUSTED_PROXY_IPS: "${WARDEN_WEB_IPV4:-172.30.10.10}/32"
+      FORWARDED_ALLOW_IPS: "${WARDEN_WEB_IPV4:-172.30.10.10}"
+      # One worker per container keeps Prometheus counters consistent (per-process registry). Scale
+      # out with more containers; Prometheus discovers each one (deploy/prometheus/prometheus.yml).
+      UVICORN_WORKERS: "${UVICORN_WORKERS:-1}"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
       cache:
         condition: service_healthy
-    # Read-only root filesystem: the analyzer never needs to write outside /tmp. This is a
-    # defence-in-depth control given it processes untrusted package archives.
-    read_only: true
     tmpfs:
-      - /tmp
-    security_opt:
-      - no-new-privileges:true
-    ports:
-      - "8000:8000"
-    restart: unless-stopped
+      # Scratch space for analysis workspaces; noexec so nothing written from a package can be executed.
+      - /tmp:rw,noexec,nosuid,nodev,size=256m
+    networks:
+      - edge     # web -> api, and the api's outbound route to PyPI / OSV / CISA KEV / FIRST EPSS
+      - data     # api -> db, cache
+      - metrics  # prometheus -> api:8000/metrics
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/live', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s  # grace period for application startup
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+          pids: 512
 
   web:
-    build: ./frontend
+    <<: *hardening
+    image: warden-x-web:local
+    build:
+      context: ./frontend
+    # Only orders the first `up`. nginx re-resolves `api` at runtime (frontend/nginx.conf), so web keeps
+    # working when api is recreated and starts even while api is down.
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     ports:
-      - "8080:80"
-    restart: unless-stopped
+      # Loopback by default. To serve other hosts, put a TLS-terminating proxy in front (see
+      # deploy/README.md) rather than publishing plain HTTP on every interface.
+      - "${WARDEN_HTTP_BIND:-127.0.0.1}:${WARDEN_HTTP_PORT:-8080}:8080"
+    networks:
+      edge:
+        # Fixed address: the api trusts X-Forwarded-* from this IP only.
+        ipv4_address: "${WARDEN_WEB_IPV4:-172.30.10.10}"
+    tmpfs:
+      # nginx pid file and proxy / client-body temp files (the image keeps them under /tmp).
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+      - /var/cache/nginx:rw,noexec,nosuid,nodev,size=8m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128m
+          pids: 64
+
+  # ------------------------------------------------------------------ profile: observability
+  prometheus:
+    <<: *hardening
+    profiles: ["observability"]
+    image: prom/prometheus:v3.14.0@sha256:5ce7540c3c00ef4ab0c9d2c995c6a5b9c421f44b4a115d97a2c7af3b1c21cbb0
+    # Runs as the image's `nobody` user. The admin and lifecycle HTTP APIs stay disabled (defaults).
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --storage.tsdb.retention.size=2GB
+      - --web.listen-address=:9090
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    secrets:
+      - source: metrics_token
+        target: metrics_token  # /run/secrets/metrics_token, the credentials_file in prometheus.yml
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    networks:
+      - metrics
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+          pids: 128
+
+  grafana:
+    <<: *hardening
+    profiles: ["observability"]
+    # grafana/grafana is the OSS edition. grafana/grafana-oss is deliberately not used: Grafana's Docker
+    # installation docs say that repository is no longer updated from release 12.4.0 on, and its newest
+    # tag on 2026-09-15 was 13.0.2 (pushed 2026-06-02).
+    image: grafana/grafana:13.2.2@sha256:ac461fb352abc50da10a51c7d02462e9c05488f11f53f14b3ad79a8145f638a0
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:-admin}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set (see .env.example)}"
+      GF_SERVER_ROOT_URL: "${GRAFANA_ROOT_URL:-http://localhost:3000/}"
+      # Set GRAFANA_COOKIE_SECURE=true once Grafana is served over HTTPS.
+      GF_SECURITY_COOKIE_SECURE: "${GRAFANA_COOKIE_SECURE:-false}"
+      GF_SECURITY_COOKIE_SAMESITE: strict
+      GF_SECURITY_CONTENT_SECURITY_POLICY: "true"
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_ALLOW_ORG_CREATE: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
+      # No usage reporting, update checks, news feed or plugin downloads.
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_LOG_MODE: console
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./deploy/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./deploy/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./deploy/grafana/dashboards:/etc/grafana/dashboards/warden:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+      - /var/log/grafana:rw,noexec,nosuid,nodev,size=16m
+    ports:
+      - "${GRAFANA_BIND:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"
+    networks:
+      - metrics  # grafana -> prometheus
+      - ops      # host port publishing (ports cannot be published from an internal-only network)
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512m
+          pids: 256
+
+  # ------------------------------------------------------------------ profile: worker
+  monitor:
+    <<: [*hardening, *api-image]
+    profiles: ["worker"]
+    # Continuous-monitoring worker. The app.workers.monitor module is being implemented by the backend
+    # team; this service is ready for it but has not been run.
+    command: ["python", "-m", "app.workers.monitor"]
+    environment:
+      <<: *api-environment
+      MONITOR_ENABLED: "true"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=256m
+    networks:
+      - data           # db, cache
+      - worker_egress  # outbound to PyPI / OSV / CISA KEV / FIRST EPSS
+    healthcheck:
+      # Heartbeat contract requested from the backend team: the worker touches this file at least every
+      # 5 minutes, idle or not. Until that exists this probe reports "unhealthy"; it never fakes health.
+      test: ["CMD", "python", "-c", "import os,sys,time; p='/tmp/warden-monitor.heartbeat'; sys.exit(0 if os.path.exists(p) and time.time() - os.path.getmtime(p) < 600 else 1)"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+          pids: 256
+
+secrets:
+  metrics_token:
+    # File-sourced, so Compose bind-mounts it read-only at /run/secrets/metrics_token (the
+    # credentials_file in deploy/prometheus/prometheus.yml). This works with prometheus's read-only root
+    # filesystem; `environment:` and `content:` secrets do not, because Compose has to copy those into
+    # the container and refuses to for read_only services. The file must hold the same value as
+    # METRICS_TOKEN in .env, must be readable by UID 65534 (nobody), is ignored by git
+    # (deploy/secrets/.gitignore) and is only needed for the observability profile. deploy/README.md
+    # shows how to create it.
+    file: ./deploy/secrets/metrics_token
+
+networks:
+  # web <-> api. Not internal: web publishes the host port and the api needs outbound HTTPS. The fixed
+  # subnet lets the api trust exactly one reverse-proxy address.
+  edge:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: "${WARDEN_EDGE_SUBNET:-172.30.10.0/24}"
+  # api / monitor / migrate <-> db, cache. No host access, no outbound route.
+  data:
+    driver: bridge
+    internal: true
+  # prometheus -> api, grafana -> prometheus. No host access, no outbound route.
+  metrics:
+    driver: bridge
+    internal: true
+  # Grafana's published port (observability profile).
+  ops:
+    driver: bridge
+  # Outbound access for the monitor worker (worker profile), kept apart from the edge network.
+  worker_egress:
+    driver: bridge
 
 volumes:
   pgdata:
+  prometheus_data:
+  grafana_data:

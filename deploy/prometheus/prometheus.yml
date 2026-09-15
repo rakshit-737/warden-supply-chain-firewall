@@ -1,0 +1,53 @@
+# Prometheus configuration for the Warden X "observability" Compose profile.
+#
+# Prometheus runs only on the internal `metrics` network and scrapes the API containers directly on
+# port 8000. The web (nginx) container deliberately does not proxy /metrics, so the endpoint is never
+# reachable from outside the Compose networks.
+#
+# The API requires `Authorization: Bearer <METRICS_TOKEN>` on /metrics. Prometheus reads the token from
+# the Compose file secret /run/secrets/metrics_token (deploy/secrets/metrics_token on the host); it is
+# never written here. If that file and METRICS_TOKEN in .env differ, every scrape is rejected with
+# HTTP 401 and the "API metrics scrape" panel of the Warden SOC dashboard shows Down.
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 30s
+
+scrape_configs:
+  - job_name: warden-api
+    metrics_path: /metrics
+    # Plain HTTP is used because the traffic never leaves the internal `metrics` bridge network.
+    # If the API is ever scraped across hosts, switch to https and add tls_config.
+    scheme: http
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/metrics_token
+    follow_redirects: false
+    # Guard rail against a cardinality explosion: the API bounds its own label values (see
+    # backend/app/core/metrics.py), so hitting this limit indicates a bug. When it is exceeded,
+    # Prometheus fails that scrape rather than ingesting unbounded series.
+    sample_limit: 50000
+    # Metrics registries are per process, so every api container has to be its own target. Docker's
+    # embedded DNS returns one A record per running api container (for example after
+    # `docker compose up -d --scale api=3`), and DNS service discovery turns each record into a target
+    # (instance="<container address>:8000"). A single static `api:8000` target would reach whichever
+    # replica answered and mix their counters. Added or removed replicas are picked up within
+    # refresh_interval.
+    dns_sd_configs:
+      - names: ["api"]
+        type: A
+        port: 8000
+        refresh_interval: 30s
+    relabel_configs:
+      - target_label: service
+        replacement: warden-api
+
+  # The monitor worker (compose profile "worker") runs in its own process, and Prometheus client
+  # registries are per-process. Its gauges (queue_depth, monitored_packages) only become visible
+  # to Prometheus if the worker exposes its own metrics endpoint or the API computes them at
+  # scrape time. No worker scrape job is configured because no worker endpoint exists yet.
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["127.0.0.1:9090"]

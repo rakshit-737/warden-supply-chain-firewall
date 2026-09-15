@@ -1,0 +1,15 @@
+# Build context for the Warden X dashboard image. Dependencies are always installed inside the build
+# from package-lock.json (npm ci); nothing from a workstation's node_modules or local env files is sent.
+node_modules
+dist
+coverage
+.vite
+*.tsbuildinfo
+vite.config.d.ts
+vite.config.js
+.env
+.env.*
+npm-debug.log*
+.git
+Dockerfile
+.dockerignore

@@ -1,10 +1,36 @@
-__pycache__/
-*.pyc
+# Build context for the Warden X API image: send only what the Dockerfile needs, and never local
+# secrets, databases, caches or workstation-trained models (the image trains its own model).
+.git
+.gitignore
+Dockerfile
+.dockerignore
+
+# Local environment files (may contain secrets)
+**/.env
+**/.env.*
+
+# Python caches, virtualenvs and tool output
+**/__pycache__
+**/*.py[cod]
+.venv/
+venv/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.coverage
+htmlcov/
+*.log
+
+# Not shipped in the runtime image
 tests/
-*.db
-.env
-.venv/
+benchmark/results/
+
+# Local databases and generated data
+**/*.db
+**/*.sqlite3
 ml/dataset.csv
+warden-results.sarif
+
+# Model artifacts are produced by `python -m ml.train` during the image build
+app/analysis/artifacts/model.joblib
+app/analysis/artifacts/metrics.json
