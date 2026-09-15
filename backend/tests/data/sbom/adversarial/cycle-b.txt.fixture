@@ -1,0 +1,4 @@
+# FIXTURE: part of an include cycle; also includes itself.
+beta==1.0
+-r cycle-c.txt
+-r cycle-b.txt

@@ -1,0 +1,31 @@
+# FIXTURE: valid TOML carrying hostile / wrongly typed values.
+[[package]]
+name = "ok-package"
+version = "1.0.0"
+files = [
+    {file = "ok.whl", hash = "sha256:nothex"},
+    {file = "ok2.whl", hash = 42},
+]
+dependencies = ["not", "a", "table"]
+
+[[package]]
+name = "../../etc/passwd"
+version = "1.0"
+
+[[package]]
+name = "version-int"
+version = 3
+
+[[package]]
+name = "weird-version"
+version = "1.0; rm -rf /"
+
+[[package]]
+name = "git-sourced"
+version = "0.1.0"
+
+[package.source]
+type = "git"
+url = "https://user:fixture-token@git.internal.example/acme/git-sourced.git?private_token=fixture"
+reference = "main"
+resolved_reference = "0123456789abcdef"

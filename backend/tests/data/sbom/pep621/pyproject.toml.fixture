@@ -1,0 +1,22 @@
+# FIXTURE: synthetic PEP 621 / PEP 735 project for Warden SBOM parser tests.
+[project]
+name = "fixture-app"
+version = "1.4.0"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.27",
+    "pydantic==2.7.0",
+    "rich[jupyter]>=13 ; python_version >= \"3.10\"",
+    'tomli>=2 ; python_version < "3.11"',
+]
+
+[project.optional-dependencies]
+socks = ["pysocks==1.7.1"]
+docs = [
+    "mkdocs>=1.5",
+]
+
+[dependency-groups]
+test = ["pytest>=8", {include-group = "lint"}]
+lint = ["ruff==0.4.0", {include-group = "test"}]
+typing = ["mypy", {include-group = "missing-group"}]

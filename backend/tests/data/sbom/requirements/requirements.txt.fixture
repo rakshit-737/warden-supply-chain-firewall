@@ -1,0 +1,18 @@
+# FIXTURE: synthetic requirements file for Warden SBOM parser tests (hashes are not real digests).
+--index-url https://ci-user:fixture-token-123@packages.internal.example/simple
+--extra-index-url https://pypi.org/simple
+
+requests[socks,security]==2.31.0 \
+    --hash=sha256:abababababababababababababababababababababababababababababababab \
+    --hash=sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd
+flask>=2.0,<3 ; python_version >= "3.8"  # web framework
+Django==4.2.*
+urllib3 === 1.26.18
+-r base.txt
+-c constraints.txt
+-e git+https://deploy-user:fixture-secret@git.internal.example/acme/thing.git#egg=acme-thing
+https://downloads.example.com/archive/legacy_pkg-1.0.tar.gz
+wheelpkg @ https://downloads.example.com/wheels/wheelpkg-2.0-py3-none-any.whl
+${PRIVATE_PKG}==1.0
+idna   # unpinned; the constraints file pins it
+certifi#not-a-comment==1

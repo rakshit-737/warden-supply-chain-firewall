@@ -1,0 +1,7 @@
+# FIXTURE: closes the include cycle and tries includes that must never be read.
+gamma==1.0
+-r requirements.txt
+-r missing.txt
+-r https://evil.example/remote-requirements.txt
+-r ../../../../etc/passwd
+--requirement=C:\Windows\win.ini

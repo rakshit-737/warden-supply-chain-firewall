@@ -1,0 +1,6 @@
+# FIXTURE: duplicate and conflicting declarations (names differ only by case / separators).
+requests==2.31.0
+Requests==2.31.0
+requests==2.30.0
+python_dateutil==2.9.0
+python-dateutil>=2.8

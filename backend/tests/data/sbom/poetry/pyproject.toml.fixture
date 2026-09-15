@@ -1,0 +1,29 @@
+# FIXTURE: synthetic Poetry project for Warden SBOM parser tests.
+[tool.poetry]
+name = "fixture-poetry-app"
+version = "0.3.0"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+httpx = "^0.27"
+anyio = "~4.3"
+click = "8.1.7"
+legacy = ">=1.0 || <0.5"
+private-lib = { version = "^1.2", source = "internal" }
+pysocks = { version = "^1.7", optional = true }
+acme-git = { git = "https://github.com/acme/acme-git.git", tag = "v1.0" }
+
+[tool.poetry.dependencies.tomli]
+version = "^2.0"
+markers = "python_version < '3.11'"
+
+[tool.poetry.extras]
+socks = ["pysocks"]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2"
+
+[[tool.poetry.source]]
+name = "internal"
+url = "https://packages.internal.example/simple/"
+priority = "supplemental"

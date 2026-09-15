@@ -1,0 +1,9 @@
+# FIXTURE: unusual-but-valid and invalid PEP 508 environment markers.
+pkg-one==1.0; python_version>"3.6" and (sys_platform=="linux" or sys_platform=='win32')
+pkg-two==2.0 ; extra == "tests"
+pkg-three==3.0; python_version ~= "3.8" and platform_machine not in "arm64,aarch64"
+pkg-bad==1.0; python_version >>> "3"
+pkg-bad2==1.0; unknown_variable == "x"
+pkg-four [ extra1 , extra2 ] >= 1.0 , < 2.0 ; implementation_name == "cpython"
+pkg-five==5.0; python_version < "3.8" and
+pkg‮evil==1.0

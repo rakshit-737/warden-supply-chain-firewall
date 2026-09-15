@@ -1,0 +1,3 @@
+# FIXTURE: include cycle requirements.txt -> cycle-b.txt -> cycle-c.txt -> requirements.txt
+alpha==1.0
+-r cycle-b.txt

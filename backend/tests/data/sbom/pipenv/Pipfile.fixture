@@ -1,0 +1,21 @@
+# FIXTURE: synthetic Pipfile for Warden SBOM parser tests.
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[[source]]
+url = "https://token-user:fixture-pass@packages.internal.example/simple"
+verify_ssl = true
+name = "internal"
+
+[packages]
+requests = "==2.31.0"
+flask = {version = ">=2.0", extras = ["async"]}
+private-lib = {version = "*", index = "internal"}
+
+[dev-packages]
+pytest = "*"
+
+[requires]
+python_version = "3.12"

@@ -1,0 +1,4 @@
+# FIXTURE: syntactically invalid TOML.
+[project
+name = "broken"
+dependencies = ["requests"

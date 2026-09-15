@@ -1,0 +1,3 @@
+# FIXTURE: included via "-r base.txt" (hash is not a real digest).
+certifi==2024.2.2 --hash=sha256:efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef
+charset-normalizer>=3

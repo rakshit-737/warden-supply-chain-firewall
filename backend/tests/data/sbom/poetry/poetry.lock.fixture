@@ -1,0 +1,178 @@
+# FIXTURE: synthetic lock-version 2.1 poetry.lock for Warden SBOM parser tests.
+# Hashes are not real digests and the anyio <-> sniffio cycle is deliberate.
+[[package]]
+name = "httpx"
+version = "0.27.0"
+description = "fixture"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "httpx-0.27.0-py3-none-any.whl", hash = "sha256:1212121212121212121212121212121212121212121212121212121212121212"},
+    {file = "httpx-0.27.0.tar.gz", hash = "sha256:3434343434343434343434343434343434343434343434343434343434343434"},
+]
+
+[package.dependencies]
+anyio = "*"
+certifi = "*"
+
+[[package]]
+name = "anyio"
+version = "4.3.0"
+description = "fixture"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "anyio-4.3.0-py3-none-any.whl", hash = "sha256:5656565656565656565656565656565656565656565656565656565656565656"},
+]
+
+[package.dependencies]
+idna = ">=2.8"
+sniffio = ">=1.1"
+
+[[package]]
+name = "idna"
+version = "3.7"
+description = "fixture"
+optional = false
+python-versions = ">=3.5"
+groups = ["main"]
+files = [
+    {file = "idna-3.7-py3-none-any.whl", hash = "sha256:7878787878787878787878787878787878787878787878787878787878787878"},
+]
+
+[[package]]
+name = "sniffio"
+version = "1.3.1"
+description = "fixture"
+optional = false
+python-versions = ">=3.7"
+groups = ["main"]
+files = [
+    {file = "sniffio-1.3.1-py3-none-any.whl", hash = "sha256:9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a"},
+]
+
+[package.dependencies]
+anyio = ">=4"
+
+[[package]]
+name = "certifi"
+version = "2024.2.2"
+description = "fixture"
+optional = false
+python-versions = ">=3.6"
+groups = ["main"]
+files = [
+    {file = "certifi-2024.2.2-py3-none-any.whl", hash = "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc"},
+]
+
+[[package]]
+name = "click"
+version = "8.1.7"
+description = "fixture"
+optional = false
+python-versions = ">=3.7"
+groups = ["main"]
+files = [
+    {file = "click-8.1.7-py3-none-any.whl", hash = "sha256:dededededededededededededededededededededededededededededededede"},
+]
+
+[package.dependencies]
+colorama = {version = "*", markers = "platform_system == \"Windows\""}
+
+[[package]]
+name = "legacy"
+version = "1.1.0"
+description = "fixture"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = []
+
+[[package]]
+name = "private-lib"
+version = "1.2.3"
+description = "fixture"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "private_lib-1.2.3-py3-none-any.whl", hash = "sha256:f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0"},
+]
+
+[package.source]
+type = "legacy"
+url = "https://packages.internal.example/simple"
+reference = "internal"
+
+[[package]]
+name = "pysocks"
+version = "1.7.1"
+description = "fixture"
+optional = true
+python-versions = "*"
+groups = ["main"]
+files = []
+
+[[package]]
+name = "acme-git"
+version = "1.0.0"
+description = "fixture"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = []
+develop = false
+
+[package.source]
+type = "git"
+url = "https://github.com/acme/acme-git.git"
+reference = "v1.0"
+resolved_reference = "0123456789abcdef0123456789abcdef01234567"
+
+[[package]]
+name = "tomli"
+version = "2.0.1"
+description = "fixture"
+optional = false
+python-versions = ">=3.7"
+groups = ["main"]
+markers = "python_version < \"3.11\""
+files = []
+
+[[package]]
+name = "pytest"
+version = "8.2.0"
+description = "fixture"
+optional = false
+python-versions = ">=3.8"
+groups = ["dev"]
+files = []
+
+[package.dependencies]
+iniconfig = "*"
+pluggy = ">=1.5,<2.0"
+
+[[package]]
+name = "iniconfig"
+version = "2.0.0"
+description = "fixture"
+optional = false
+python-versions = ">=3.7"
+groups = ["dev"]
+files = []
+
+[[package]]
+name = "pluggy"
+version = "1.5.0"
+description = "fixture"
+optional = false
+python-versions = ">=3.8"
+groups = ["dev"]
+files = []
+
+[metadata]
+lock-version = "2.1"
+python-versions = "^3.11"
+content-hash = "fixture"

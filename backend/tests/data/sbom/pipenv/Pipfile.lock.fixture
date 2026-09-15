@@ -1,0 +1,79 @@
+{
+    "_comment": "FIXTURE: synthetic Pipfile.lock for Warden SBOM parser tests; hashes are not real digests.",
+    "_meta": {
+        "hash": {
+            "sha256": "fixture"
+        },
+        "pipfile-spec": 6,
+        "requires": {
+            "python_version": "3.12"
+        },
+        "sources": [
+            {
+                "name": "pypi",
+                "url": "https://pypi.org/simple",
+                "verify_ssl": true
+            },
+            {
+                "name": "internal",
+                "url": "https://token-user:fixture-pass@packages.internal.example/simple",
+                "verify_ssl": true
+            }
+        ]
+    },
+    "default": {
+        "certifi": {
+            "hashes": [
+                "sha256:c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+            ],
+            "index": "pypi",
+            "markers": "python_version >= '3.6'",
+            "version": "==2024.2.2"
+        },
+        "flask": {
+            "hashes": [
+                "sha256:d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2"
+            ],
+            "index": "pypi",
+            "version": "==3.0.3"
+        },
+        "private-lib": {
+            "hashes": [
+                "sha256:e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3"
+            ],
+            "index": "internal",
+            "version": "==1.2.3"
+        },
+        "requests": {
+            "hashes": [
+                "sha256:f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4",
+                "sha256:a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+            ],
+            "index": "pypi",
+            "version": "==2.31.0"
+        },
+        "urllib3": {
+            "hashes": [
+                "sha256:tooshort",
+                "md5:0123456789abcdef0123456789abcdef"
+            ],
+            "version": "==2.2.1"
+        }
+    },
+    "develop": {
+        "pytest": {
+            "hashes": [
+                "sha256:b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6"
+            ],
+            "index": "pypi",
+            "version": "==8.2.0"
+        },
+        "requests": {
+            "hashes": [
+                "sha256:f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4"
+            ],
+            "index": "pypi",
+            "version": "==2.31.0"
+        }
+    }
+}
