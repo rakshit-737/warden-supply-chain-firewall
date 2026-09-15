@@ -13,8 +13,24 @@ Warden handles two kinds of dangerous strings:
    control/bidi characters and bounds length; ``terminal_safe``, ``html_escape`` and
    ``markdown_escape`` make text safe for a specific output sink.
 
-Every function here is pure and idempotent: sanitising already-sanitised data is a no-op,
-which keeps identifiers derived from sanitised evidence (e.g. finding ids) stable.
+Every function here is pure. The sanitisers (``redact_text``, ``sanitize_text``,
+``sanitize_evidence``, ``redact_structure``) are also idempotent: sanitising already-sanitised
+data is a no-op, which keeps identifiers derived from sanitised evidence (e.g. finding ids)
+stable across serialisation round-trips. The sink escapers (``html_escape``,
+``markdown_escape``) are deliberately *not* idempotent — escaping ``&`` twice yields
+``&amp;amp;`` — so apply each exactly once, at the output boundary.
+
+Redaction is pattern-based and high-precision: it is designed to remove the credential
+formats listed in :data:`SECRET_PATTERNS` (and values stored under secret-named keys), not
+arbitrary secrets such as free-form passwords in prose.
+
+Pattern order matters: patterns run one after another on the output of the previous one, and a
+token marker (``AKIA…[REDACTED:…]``) contains ``[`` which later patterns deliberately refuse to
+match (idempotency). ``url_credentials`` therefore runs before every token pattern, so a
+token-shaped *username* cannot shield the password that follows it. Under a secret-named key
+(``password``, ``token``, ``cookie``, ``credentials`` …) every value other than ``None``, a
+boolean or an empty string is replaced — lists, mappings, bytes and numbers included — unless
+the key is one of the explicitly safe metadata keys.
 """
 
 from __future__ import annotations
@@ -35,6 +51,14 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----"
         r"[\s\S]*?(?:-----END (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----|\Z)"
     )),
+    # The user part may be empty (``redis://:password@host``). The password may itself contain
+    # ``@`` (URL parsers split userinfo at the *last* ``@``), so the greedy secret group runs
+    # to the last ``@`` of the authority. ``[`` / ``]`` are excluded so the ``[REDACTED]``
+    # marker can never be re-matched (idempotency). Runs before the token patterns (see module docstring).
+    ("url_credentials", re.compile(
+        r"(?P<prefix>\b[a-zA-Z][a-zA-Z0-9+.\-]{1,20}://[^\s:/@\[\]]{0,128}:)"
+        r"(?P<secret>[^\s/\[\]]{1,256})(?P<suffix>@)"
+    )),
     ("aws_access_key_id", re.compile(
         r"\b(?:AKIA|ASIA|ABIA|ACCA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|APKA)[0-9A-Z]{16}\b"
     )),
@@ -52,12 +76,20 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         r"\bsk-(?:proj|svcacct|admin)-[A-Za-z0-9_\-]{20,}|\bsk-[A-Za-z0-9]{20}T3BlbkFJ[A-Za-z0-9]{20}\b"
     )),
     ("jwt", re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")),
-    ("url_credentials", re.compile(
-        r"(?P<prefix>\b[a-zA-Z][a-zA-Z0-9+.\-]{1,20}://[^\s:/@\[\]]{1,128}:)"
-        r"(?P<secret>[^\s/@\[\]]{1,256})(?P<suffix>@)"
-    )),
     ("bearer_token", re.compile(
         r"(?i)(?P<prefix>\bauthorization[\"']?\s*[:=]\s*[\"']?bearer\s+)(?P<secret>[A-Za-z0-9._~+/\-]{16,}=*)"
+    )),
+    # Any HTTP auth scheme after an (Proxy-)Authorization header name, including header-tuple
+    # reprs such as ``(b'authorization', b'Basic ...')``. Basic credentials are reversible base64.
+    ("authorization_header", re.compile(
+        r"(?i)(?P<prefix>\b(?:proxy-)?authorization\b[\"']?(?:\s*[:=,]\s*b?|\s+)[\"']?\s*"
+        r"(?:basic|bearer|token|digest|negotiate)\s+)(?P<secret>[A-Za-z0-9._~+/\-]{8,}=*)"
+    )),
+    # A bare ``Bearer <token>`` / ``Basic <credentials>`` without the header name. Requires a long
+    # value with both a digit and a letter so ordinary prose ("basic authentication") is untouched.
+    ("auth_scheme_credentials", re.compile(
+        r"(?i)(?P<prefix>\b(?:bearer|basic)\s+)"
+        r"(?P<secret>(?=[A-Za-z0-9._~+/\-]*\d)(?=[A-Za-z0-9._~+/\-]*[A-Za-z])[A-Za-z0-9._~+/\-]{20,}=*)"
     )),
 )
 
@@ -69,19 +101,50 @@ _SENSITIVE_KEY_RE = re.compile(
 _SAFE_KEYS = frozenset({
     "token_type", "secret_type", "detector", "fingerprint", "secret_detector", "credential_type",
     "sensitive", "sensitive_env", "sensitive_paths", "expires_in",
+    # Counters / flags logged and audited by the auth, users and system routes.
+    "revoked_tokens", "revoked_refresh_tokens", "token_required",
 })
 
-# C0 controls (except TAB/LF), DEL, C1 controls, zero-width chars, line/paragraph separators,
-# bidirectional embeddings/overrides/isolates, and BOM.
+
+def _is_secret_key(key: object) -> bool:
+    return isinstance(key, str) and key not in _SAFE_KEYS and bool(_SENSITIVE_KEY_RE.search(key))
+
+
+def _redactable(value: object) -> bool:
+    """Values replaced under a secret-named key: everything except ``None``, booleans and ``""``."""
+    return value is not None and not isinstance(value, bool) and value != ""
+
+# Invisible or direction-changing characters, escaped by ``sanitize_text``: C0 controls (except
+# TAB/LF), DEL, C1 controls, soft hyphen, ARABIC LETTER MARK, MONGOLIAN VOWEL SEPARATOR,
+# zero-width chars and LRM/RLM, line/paragraph separators, bidi embeddings/overrides/isolates,
+# word joiner / invisible operators, deprecated format chars, BOM, interlinear annotation
+# controls, and Unicode "tag" characters (invisible ASCII look-alikes used to smuggle text).
 _CONTROL_RE = re.compile(
-    "[\x00-\x08\x0b-\x1f\x7f-\x9f\u200b-\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069\ufeff]"
+    "[\x00-\x08\x0b-\x1f\x7f-\x9f\xad\u061c\u180e\u200b-\u200f\u2028\u2029\u202a-\u202e"
+    "\u2060-\u2064\u2066-\u206f\ufeff\ufff9-\ufffb\U000e0000-\U000e007f]"
 )
 _MD_SPECIAL_RE = re.compile(r"([\\`*_{}\[\]()#+!|~])")
+
+# The private-key marker includes an END line: a marker that ended at "[REDACTED]" would be
+# re-matched by the (deliberately END-optional) private-key pattern on a second pass, which
+# would then swallow all text after it.
+PRIVATE_KEY_MARKER = "-----BEGIN PRIVATE KEY-----[REDACTED]-----END PRIVATE KEY-----"
+# Strings accepted as "already redacted" under secret-named keys (see ``sanitize_evidence``):
+# ``[REDACTED]``, the private-key marker, or the ``redact_value`` / ``redact_text`` forms whose
+# visible prefix is at most four identifier characters (a type prefix such as ``AKIA``).
+_MARKER_RE = re.compile(
+    r"\[REDACTED\]"
+    r"|-----BEGIN PRIVATE KEY-----\[REDACTED\](?:-----END PRIVATE KEY-----)?"
+    r"|[A-Za-z0-9_\-]{0,4}…\[REDACTED:[a-z0-9_]{1,40}(?::len=[0-9]{1,10})?\]"
+)
+_MAX_SANITIZE_PASSES = 8
 
 
 def _escape_char(match: re.Match[str]) -> str:
     code = ord(match.group(0))
-    return f"\\x{code:02x}" if code < 0x100 else f"\\u{code:04x}"
+    if code < 0x100:
+        return f"\\x{code:02x}"
+    return f"\\u{code:04x}" if code <= 0xFFFF else f"\\U{code:08x}"
 
 
 def _mask(match: re.Match[str], detector: str) -> str:
@@ -89,7 +152,7 @@ def _mask(match: re.Match[str], detector: str) -> str:
     if groups.get("secret") is not None:
         return f"{groups.get('prefix') or ''}[REDACTED]{groups.get('suffix') or ''}"
     if detector == "private_key":
-        return "-----BEGIN PRIVATE KEY-----[REDACTED]"
+        return PRIVATE_KEY_MARKER
     return f"{match.group(0)[:4]}…[REDACTED:{detector}]"
 
 
@@ -101,6 +164,11 @@ def redact_text(text: str) -> str:
     for detector, pattern in SECRET_PATTERNS:
         out = pattern.sub(lambda m, d=detector: _mask(m, d), out)
     return out
+
+
+def is_redaction_marker(value: str) -> bool:
+    """True when ``value`` is exactly one of the markers this module produces."""
+    return bool(_MARKER_RE.fullmatch(value))
 
 
 def find_secrets(text: str) -> list[tuple[str, int, int, str]]:
@@ -122,7 +190,7 @@ def find_secrets(text: str) -> list[tuple[str, int, int, str]]:
 def redact_value(value: str, detector: str = "secret") -> str:
     """A display-safe stand-in for a secret value: type prefix + length, never the secret."""
     if detector == "private_key":
-        return "-----BEGIN PRIVATE KEY-----[REDACTED]"
+        return PRIVATE_KEY_MARKER
     prefix = value[:4] if len(value) >= 16 else ""
     return f"{prefix}…[REDACTED:{detector}:len={len(value)}]"
 
@@ -151,8 +219,36 @@ def sanitize_text(value: object, *, max_len: int = 300, redact: bool = True, kee
     if redact:
         s = redact_text(s)
     if max_len > 0 and len(s) > max_len:
-        s = s[: max_len - 1] + "…"
+        s = _truncate(s, max_len, redact)
     return s
+
+
+def _first_match_start(text: str) -> int:
+    starts = [m.start() for _, pattern in SECRET_PATTERNS if (m := pattern.search(text))]
+    return min(starts) if starts else 0
+
+
+def _truncate(s: str, max_len: int, redact: bool) -> str:
+    """Bound ``s`` to ``max_len`` characters without leaving a secret match that the cut created.
+
+    A cut can *create* a match (a long run of token characters gains the word boundary a
+    pattern needs) or cut through a redaction marker so that it is re-matched and expanded.
+    The candidate is therefore re-redacted; if that no longer fits, the text is cut again
+    *before* the offending match. The result ``r`` satisfies ``redact_text(r) == r`` and
+    ``len(r) <= max_len``, which is what keeps ``sanitize_text`` idempotent.
+    """
+    cut = max_len - 1
+    for _ in range(_MAX_SANITIZE_PASSES):
+        candidate = s[:cut] + "…"
+        if not redact:
+            return candidate
+        redacted = redact_text(candidate)
+        if redacted == candidate:
+            return candidate
+        if len(redacted) <= max_len:
+            return redacted
+        cut = max(0, min(_first_match_start(candidate), cut - 1))
+    return "…"
 
 
 def sanitize_evidence(
@@ -182,10 +278,15 @@ def sanitize_evidence(
         keep = items if len(items) <= max_keys else items[: max_keys - 1]
         for k, v in keep:
             key = sanitize_text(k, max_len=80)
-            if _SENSITIVE_KEY_RE.search(key) and key not in _SAFE_KEYS and isinstance(v, str) and v:
-                out[key] = v if v.startswith("[REDACTED") or "…[REDACTED" in v else "[REDACTED]"
+            cleaned = sanitize_evidence(v, **kw)
+            if _is_secret_key(key) and _redactable(cleaned):
+                # Under a secret-named key only a string that is *exactly* a redaction marker is
+                # kept; any other value (a hostile "[REDACTED] <secret>", a list or mapping of
+                # secrets, a numeric PIN) is replaced. The check runs on the sanitised value, so a
+                # second pass reaches the same result (idempotency).
+                out[key] = cleaned if isinstance(cleaned, str) and is_redaction_marker(cleaned) else "[REDACTED]"
             else:
-                out[key] = sanitize_evidence(v, **kw)
+                out[key] = cleaned
         if len(items) > max_keys:
             out["_truncated_keys"] = len(items) - (max_keys - 1)
         return out
@@ -216,21 +317,30 @@ def markdown_escape(value: object, *, max_len: int = 2000) -> str:
 
 
 def redact_structure(value: Any, _depth: int = 0) -> Any:
-    """Redact secrets in an arbitrary nested structure without truncating it (for logs)."""
-    if _depth > 8:
-        return value
+    """Redact secrets in an arbitrary nested structure without truncating it (for logs).
+
+    Containers nested deeper than 8 levels are replaced by ``"<max-depth>"`` rather than
+    passed through unredacted. Tuple subclasses (e.g. named tuples) and sets become plain
+    tuples / lists of redacted items, so a log call can never fail inside this processor.
+    """
     if isinstance(value, str):
         return redact_text(value)
+    if _depth > 8:
+        return "<max-depth>" if isinstance(value, (Mapping, list, tuple, set, frozenset)) else value
     if isinstance(value, Mapping):
         out = {}
         for k, v in value.items():
-            if isinstance(k, str) and _SENSITIVE_KEY_RE.search(k) and k not in _SAFE_KEYS and isinstance(v, str) and v:
+            if _is_secret_key(k) and _redactable(v):
                 out[k] = "[REDACTED]"
             else:
                 out[k] = redact_structure(v, _depth + 1)
         return out
+    if type(value) is list:
+        return [redact_structure(v, _depth + 1) for v in value]
     if isinstance(value, (list, tuple)):
-        return type(value)(redact_structure(v, _depth + 1) for v in value)
+        return tuple(redact_structure(v, _depth + 1) for v in value)
+    if isinstance(value, (set, frozenset)):
+        return [redact_structure(v, _depth + 1) for v in sorted(value, key=str)]
     return value
 
 

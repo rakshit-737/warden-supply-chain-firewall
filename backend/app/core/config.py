@@ -89,6 +89,7 @@ class Settings(BaseSettings):
     MAX_PATH_LENGTH: int = 512
     MAX_PATH_DEPTH: int = 32
     MAX_METADATA_BYTES: int = 32 * 1024 * 1024  # registry JSON responses (numpy's is large)
+    EXTRACTION_TIMEOUT_SECONDS: int = 60  # wall-clock budget for reading one archive
     SCAN_TIMEOUT_SECONDS: int = 180
     ANALYZER_TIMEOUT_SECONDS: int = 60
     ANALYZER_WORKERS: int = 4
@@ -206,10 +207,13 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _enforce_production_hardening(self) -> Settings:
         if self.ENV == "production":
-            if len(self.SECRET_KEY) < 32 or self.SECRET_KEY.strip().lower() in _KNOWN_PLACEHOLDER_SECRETS:
+            # Length is measured after stripping, so a whitespace-only value cannot pass.
+            secret = self.SECRET_KEY.strip()
+            if len(secret) < 32 or secret.lower() in _KNOWN_PLACEHOLDER_SECRETS:
                 raise ValueError("SECRET_KEY must be a strong, non-placeholder value (>=32 chars) in production.")
-            if self.FIRST_ADMIN_PASSWORD == _DEFAULT_ADMIN_PASSWORD:
-                raise ValueError("FIRST_ADMIN_PASSWORD must be changed from its default in production.")
+            # 12 matches the registration password minimum (RegisterRequest).
+            if self.FIRST_ADMIN_PASSWORD == _DEFAULT_ADMIN_PASSWORD or len(self.FIRST_ADMIN_PASSWORD.strip()) < 12:
+                raise ValueError("FIRST_ADMIN_PASSWORD must be changed from its default (>=12 chars) in production.")
             if self.DEBUG:
                 raise ValueError("DEBUG must be False in production.")
             if self.SANDBOX_ENABLED and self.SANDBOX_RUNTIME != "runsc":
