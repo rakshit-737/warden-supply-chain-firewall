@@ -1,0 +1,112 @@
+# Dependabot version updates for Warden X.
+#
+# - Checks run weekly. Minor and patch updates are grouped into one PR per ecosystem entry;
+#   major updates still arrive as individual PRs so breaking changes are reviewed on their own.
+# - cooldown: a newly published version has to be at least 7 days old before Dependabot proposes
+#   it as a version update. Hijacked or malicious releases are frequently yanked within days, which
+#   is exactly the threat Warden itself defends against. Cooldown does not delay Dependabot
+#   security updates.
+# - GitHub Actions are pinned to full commit SHAs with a "# vX.Y.Z" comment; Dependabot updates
+#   both the SHA and the comment.
+# - Container images pinned as name:tag@sha256:<digest> (Dockerfiles, docker-compose.yml) get the tag
+#   and the digest updated together.
+# - NOT covered by Dependabot, bump by hand after verifying the new release:
+#     * gitleaks / Trivy / syft release binaries and their recorded sha256 (.github/workflows/*.yml)
+#     * the postgres and redis service image digests in ci.yml: keep them equal to the db and cache
+#       images in docker-compose.yml whenever Dependabot bumps those
+#     * the hash-pinned build tooling in publish.yml
+#     * the reviewed gh-action-pypi-publish image digest in publish.yml (see its header)
+#     * pre-commit hook revs (`pre-commit autoupdate --freeze`)
+# - The pinned third-party Compose images are scanned for known vulnerabilities by the
+#   trivy-compose-images job in security.yml.
+version: 2
+
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Etc/UTC
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 10
+    groups:
+      pip-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Etc/UTC
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 10
+    groups:
+      npm-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Etc/UTC
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 10
+    groups:
+      github-actions-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: docker
+    directories:
+      - /backend
+      - /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Etc/UTC
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 10
+    groups:
+      docker-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  # docker-compose.yml: postgres, redis, prometheus and grafana. The `docker` ecosystem above does not
+  # read Compose files.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Etc/UTC
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 10
+    groups:
+      docker-compose-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch

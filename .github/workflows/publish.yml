@@ -1,17 +1,66 @@
 # Publishes Warden to PyPI when you push a version tag (e.g. `git tag v1.0.0 && git push --tags`).
 #
-# One-time setup before this will publish anything:
-#   1. Create the project owner side on PyPI:
-#        https://pypi.org/manage/account/publishing/  →  add a "pending" trusted publisher:
+# One-time setup before this will publish anything. Steps 2 and 3 are the controls that decide who
+# can release. The checks inside this workflow (job verify-release-commit) are defence in depth only:
+# whoever can push a release tag can also edit this file in the commit they tag and drop them.
+#   1. PyPI: https://pypi.org/manage/account/publishing/ → add a "pending" trusted publisher:
 #        PyPI project name: warden-supply-chain-firewall
 #        Owner: rakshit-737   Repository: warden-supply-chain-firewall
 #        Workflow name: publish.yml   Environment: pypi
-#   2. In this repo: Settings → Environments → create an environment named `pypi`.
-#   3. In this repo: Settings → Secrets and variables → Actions → Variables →
-#        add a repository variable  PYPI_PUBLISH = true
+#   2. Settings → Environments → create `pypi` and protect it:
+#        - Required reviewers: the release managers, with "Prevent self-review" enabled.
+#        - Deployment branches and tags: "Selected branches and tags", with the single tag rule `v*`.
+#      PyPI Trusted Publishing only checks the repository, the workflow file name and the environment
+#      name. A job that uses the `pypi` environment waits for a reviewer before it starts, so nothing
+#      is uploaded without that approval, even when the tagged commit rewrote this workflow.
+#   3. Settings → Rules → Rulesets → New tag ruleset: target `v*`, enforcement Active, rules
+#      "Restrict creations", "Restrict updates" and "Restrict deletions", bypass list limited to the
+#      release managers. Without it anyone with write access, or a leaked token with contents:write,
+#      can put a release tag on any commit. This is also the control for build provenance: the attest
+#      job below is not behind the environment approval, so a tag it runs for gets a valid attestation.
+#   4. Settings → Secrets and variables → Actions → Variables → add the repository variable
+#        PYPI_PUBLISH = true, once steps 2 and 3 are in place.
 #
 # Until PYPI_PUBLISH is "true" the publish job is SKIPPED (neutral, never red), so tagging
-# a release before you've done the PyPI setup won't produce a failing check.
+# a release before you've done the PyPI setup won't produce a failing check. The verification,
+# build, metadata-check and attestation jobs still run on every v* tag.
+#
+# Job layout: verify, then build once, least privilege per job
+#   verify-release-commit  contents, actions: read  tagged commit is on main and ci.yml passed for it
+#   build                  contents: read           builds sdist + wheel once, generates the release SBOM
+#   check-metadata         no token scopes          `twine check --strict` on the exact files that will be published
+#   attest                 id-token, attestations   Sigstore-signed SLSA build provenance for dist/* and the SBOM
+#   publish                id-token (env: pypi)     uploads the already-built dist/* via Trusted Publishing (OIDC)
+# Only `attest` and `publish` can mint an OIDC token, and neither of them builds anything or
+# installs packages from PyPI.
+#
+# Hardening notes:
+#   - Actions are pinned to full commit SHAs (resolved via the GitHub REST API; see ci.yml header).
+#   - No dependency cache is restored anywhere in this workflow (no cache poisoning of release builds).
+#   - Build tooling is installed with --require-hashes using sha256 digests published by PyPI
+#     (https://pypi.org/pypi/<name>/<version>/json, read 2026-09-15), and the build runs with
+#     --no-isolation so no unpinned build requirement is resolved at build time. `build` is pinned to
+#     1.6.0 rather than 1.6.1 because 1.6.1 was less than 7 days old (see the Dependabot cooldown).
+#   - pypa/gh-action-pypi-publish also generates PEP 740 attestations on upload (its default).
+#   - LIMITATION: pinning pypa/gh-action-pypi-publish to a commit does not pin the code the publish job
+#     runs. At commit dc37677b the action runs the container image
+#     ghcr.io/pypa/gh-action-pypi-publish:<that commit SHA> (create-docker-action.py), and GHCR tags are
+#     mutable. On 2026-09-15 that tag resolved to sha256:a68d05519f6d7e47372aeaddab80b851b69afa89be179ec41775c72c4e3ab2d5,
+#     the same image as `release-v1`, while `v1.14.2` resolved to sha256:5c2f7030fbef8308068eb4cc9080fd3c9e157ccf6d511924d69f8f4b23dc95c1,
+#     so the SHA-named tag had already been re-pushed. Whoever controls that tag controls the code that
+#     holds the PyPI OIDC token. The step before the upload records the digest the tag resolves to in
+#     the job summary and warns when it differs from the reviewed one; the image is still pulled by tag
+#     moments later, so this narrows the gap but does not close it. Closing it means replacing the
+#     action with a hash-locked twine upload plus the OIDC token exchange, and generating the PEP 740
+#     attestations separately. Resolve the digest (anonymous GHCR token) with:
+#       t=$(curl -fsS "https://ghcr.io/token?scope=repository:pypa/gh-action-pypi-publish:pull" | jq -r .token)
+#       curl -fsSI -H "Authorization: Bearer $t" -H "Accept: application/vnd.oci.image.index.v1+json" \
+#         -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+#         https://ghcr.io/v2/pypa/gh-action-pypi-publish/manifests/<action commit SHA> | grep -i docker-content-digest
+#     When Dependabot bumps the action, re-resolve, review and update REVIEWED_DIGEST in the publish job.
+#   - Verify a downloaded artifact against this workflow's provenance with:
+#       gh attestation verify <file> --repo rakshit-737/warden-supply-chain-firewall
+#     An attestation proves which workflow and commit built a file, not that the commit was reviewed.
 
 name: Publish to PyPI
 
@@ -20,29 +69,292 @@ on:
     tags:
       - "v*"
 
-jobs:
-  build-and-publish:
-    if: ${{ vars.PYPI_PUBLISH == 'true' }}
-    runs-on: ubuntu-latest
-    environment: pypi
-    permissions:
-      id-token: write # OIDC token for Trusted Publishing — no API token needed
-    steps:
-      - uses: actions/checkout@v4
+permissions: {}
 
-      - uses: actions/setup-python@v5
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify-release-commit:
+    name: Verify the tagged commit (on main, CI passed)
+    runs-on: ubuntu-24.04
+    # Includes up to 60 minutes of waiting for ci.yml on the tagged commit to finish.
+    timeout-minutes: 75
+    permissions:
+      contents: read # full history, to check that the tagged commit is on main
+      actions: read # ci.yml workflow runs for the tagged commit
+    steps:
+      - name: Check out repository (full history)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: The tagged commit must be reachable from main
+        run: |
+          set -euo pipefail
+          if ! git rev-parse --verify --quiet refs/remotes/origin/main > /dev/null; then
+            echo "::error::origin/main was not fetched; cannot check where ${GITHUB_SHA} comes from."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" refs/remotes/origin/main; then
+            echo "::error::Tag ${GITHUB_REF_NAME} points at ${GITHUB_SHA}, which is not on main. Release tags must point at a commit on main."
+            exit 1
+          fi
+
+      - name: ci.yml must have succeeded for this exact commit on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # ci.yml runs once per push to main, for the pushed head commit. A tag is often pushed while
+          # that run is still going, so wait for it. If no run shows up within about 5 minutes, the
+          # commit was never the head of a push to main (tag that head commit instead).
+          for attempt in $(seq 1 60); do
+            state="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs" \
+              -f head_sha="${GITHUB_SHA}" -f event=push -f branch=main -F per_page=20 \
+              --jq 'if any(.workflow_runs[]; .conclusion == "success") then "success"
+                    elif (.workflow_runs | length) == 0 then "none"
+                    elif all(.workflow_runs[]; .status == "completed") then "failed"
+                    else "pending" end')"
+            case "${state}" in
+              success)
+                echo "ci.yml succeeded for ${GITHUB_SHA} on main."
+                exit 0
+                ;;
+              failed)
+                echo "::error::ci.yml did not succeed for ${GITHUB_SHA} on main. Fix CI, then tag a commit whose CI passed."
+                exit 1
+                ;;
+              none)
+                if [ "${attempt}" -ge 5 ]; then
+                  echo "::error::No ci.yml push run on main exists for ${GITHUB_SHA}. Tag the head commit of a push to main."
+                  exit 1
+                fi
+                ;;
+            esac
+            echo "ci.yml for ${GITHUB_SHA}: ${state} (check ${attempt} of 60), waiting 60 s"
+            sleep 60
+          done
+          echo "::error::ci.yml for ${GITHUB_SHA} did not finish within 60 minutes."
+          exit 1
+
+  build:
+    name: Build distributions and SBOM
+    needs: verify-release-commit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      SYFT_VERSION: "1.51.1"
+      # sha256 of syft_1.51.1_linux_amd64.tar.gz as listed in syft_1.51.1_checksums.txt (release v1.51.1).
+      SYFT_SHA256: "8fcb33017a0dc1058298c923c436d19dfa68ae93968e0b423248542e3afb9fc3"
+    steps:
+      - name: Check out tagged commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
-      - name: Build sdist and wheel
+      - name: Check that the tag matches the project version
         run: |
-          python -m pip install --upgrade build
-          python -m build
+          set -euo pipefail
+          version="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match pyproject.toml version ${version}"
+            exit 1
+          fi
 
-      - name: Check metadata
+      - name: Install build tooling (exact versions, hash-verified)
         run: |
-          python -m pip install --upgrade twine
-          python -m twine check dist/*
+          set -euo pipefail
+          cat > "${RUNNER_TEMP}/build-requirements.txt" <<'EOF'
+          build==1.6.0 --hash=sha256:f7aaf1ebbb79178a02ba248bb524f2176b256017e17e8e4bd4289c7b38cc2bad
+          packaging==26.3 --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
+          pyproject_hooks==1.2.0 --hash=sha256:9e5c6bfa8dcc30091c74b0cf803c81fdd29d94f01992a7707bc97babb1141913
+          setuptools==84.0.0 --hash=sha256:51a52592b3b99e102b609654876bd65f19f999935166d1352678931132b0c670
+          wheel==0.48.0 --hash=sha256:3217dcc807155e45db462d7ef2431f5ddda0d7273b700d05a67b271ceb1287ab
+          EOF
+          python -m pip install --no-deps --only-binary=:all: --require-hashes \
+            -r "${RUNNER_TEMP}/build-requirements.txt"
+
+      - name: Build sdist and wheel
+        run: python -m build --no-isolation --sdist --wheel --outdir dist .
+
+      - name: Record distribution digests
+        run: |
+          {
+            echo '### Distribution sha256'
+            echo '```'
+            (cd dist && sha256sum -- *)
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Install syft (pinned release, sha256-verified)
+        run: |
+          set -euo pipefail
+          archive="syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+          base="https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}"
+          mkdir -p "${RUNNER_TEMP}/syft"
+          cd "${RUNNER_TEMP}/syft"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 \
+            --output "${archive}" "${base}/${archive}"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 \
+            --output checksums.txt "${base}/syft_${SYFT_VERSION}_checksums.txt"
+          # 1) must match the checksum published with the release ...
+          awk -v f="${archive}" '$2 == f' checksums.txt | sha256sum --check --strict -
+          # 2) ... and the digest recorded in this workflow.
+          echo "${SYFT_SHA256}  ${archive}" | sha256sum --check --strict -
+          tar -xzf "${archive}" syft
+          ./syft version
+
+      - name: Generate release SBOM (CycloneDX JSON)
+        # Scope: the Python sources that go into the distribution plus the pinned server runtime
+        # dependencies in backend/requirements.txt. The wheel itself declares looser ranges
+        # (pyproject.toml); this SBOM describes the pinned set this release was built and tested with.
+        # Frontend, docs, tests, CI definitions and dev-only requirements are excluded.
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p sbom
+          "${RUNNER_TEMP}/syft/syft" scan dir:. --quiet \
+            --source-name warden-supply-chain-firewall \
+            --source-version "${version}" \
+            --exclude './.github/**' \
+            --exclude './frontend/**' \
+            --exclude './docs/**' \
+            --exclude './backend/tests/**' \
+            --exclude './backend/requirements-dev.txt' \
+            --exclude './dist/**' \
+            --exclude './sbom/**' \
+            --output "cyclonedx-json=sbom/warden-supply-chain-firewall-${version}.cdx.json"
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: python-distributions
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload release SBOM
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-sbom
+          path: sbom/
+          if-no-files-found: error
+          retention-days: 90
+
+  check-metadata:
+    name: Check distribution metadata
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions: {}
+    steps:
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Download distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: python-distributions
+          path: dist
+
+      - name: twine check
+        # twine is version-pinned but its transitive dependencies are not hash-locked. This is contained:
+        # the job has no token scopes and the artifacts were already uploaded by the build job, so
+        # nothing installed here can alter what gets attested or published.
+        run: |
+          python -m pip install --disable-pip-version-check "twine==7.0.0"
+          python -m twine check --strict dist/*
+
+  attest:
+    name: Attest build provenance
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      id-token: write # OIDC identity for Sigstore signing
+      attestations: write # store the attestation on this repository
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: python-distributions
+          path: dist
+
+      - name: Download release SBOM
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-sbom
+          path: sbom
+
+      - name: Generate build provenance attestation
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/*
+            sbom/*.cdx.json
+
+  publish:
+    name: Publish to PyPI
+    needs: [build, check-metadata, attest]
+    if: ${{ vars.PYPI_PUBLISH == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: pypi
+      url: https://pypi.org/project/warden-supply-chain-firewall/
+    permissions:
+      id-token: write # OIDC token for Trusted Publishing — no API token needed
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: python-distributions
+          path: dist
+
+      - name: Record the publish action's container image digest
+        # See LIMITATION in the header. This records which image the action's mutable GHCR tag points
+        # at right now and warns when it is not the reviewed digest. It does not stop the next step from
+        # pulling a different image.
+        env:
+          ACTION_IMAGE_REPOSITORY: pypa/gh-action-pypi-publish
+          ACTION_IMAGE_TAG: dc37677b2e1c63e2034f94d8a5b11f265b73ba33
+          # Resolved from ghcr.io on 2026-09-15 (command in the header).
+          REVIEWED_DIGEST: sha256:a68d05519f6d7e47372aeaddab80b851b69afa89be179ec41775c72c4e3ab2d5
+        run: |
+          set -euo pipefail
+          token="$(curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
+            "https://ghcr.io/token?scope=repository:${ACTION_IMAGE_REPOSITORY}:pull" | jq -r .token)"
+          digest="$(curl --fail --silent --show-error --head --proto '=https' --tlsv1.2 \
+            -H "Authorization: Bearer ${token}" \
+            -H "Accept: application/vnd.oci.image.index.v1+json" \
+            -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
+            -H "Accept: application/vnd.oci.image.manifest.v1+json" \
+            -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+            "https://ghcr.io/v2/${ACTION_IMAGE_REPOSITORY}/manifests/${ACTION_IMAGE_TAG}" \
+            | tr -d '\r' | awk -F': ' 'tolower($1) == "docker-content-digest" { print $2 }')"
+          {
+            echo '### Publish action image'
+            echo "ghcr.io/${ACTION_IMAGE_REPOSITORY}:${ACTION_IMAGE_TAG} resolved to \`${digest:-unknown}\`"
+            echo "(reviewed digest: \`${REVIEWED_DIGEST}\`)"
+          } >> "${GITHUB_STEP_SUMMARY}"
+          if [ "${digest}" != "${REVIEWED_DIGEST}" ]; then
+            echo "::warning::The gh-action-pypi-publish image tag now resolves to ${digest:-an unknown digest}, not the reviewed ${REVIEWED_DIGEST}. Review the new image before trusting this release."
+          fi
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: dist/

@@ -1,0 +1,50 @@
+# pre-commit hooks for Warden X.
+#
+#   pip install "pre-commit>=3.2.0" && pre-commit install
+#   pre-commit run --all-files
+#
+# Every `rev` is a full commit SHA, not a tag: tags can be moved, commits cannot. The trailing
+# "# frozen: vX.Y.Z" comment is the tag the SHA was resolved from (GitHub REST API
+# /git/ref/tags/<tag>, cross-checked with `git ls-remote`). `pre-commit autoupdate --freeze`
+# keeps this format when bumping.
+#
+# minimum_pre_commit_version is the highest minimum declared by the pinned hook repositories, so an
+# older pre-commit fails here, up front, rather than while loading hooks. Manifests at the pinned
+# SHAs: pre-commit-hooks v6.0.0 declares 3.2.0 (and uses the `pre-commit` / `pre-push` stage names
+# that 3.2.0 introduced), ruff-pre-commit v0.16.7 declares 2.9.2, gitleaks v8.30.1 declares none.
+# Re-check the manifests whenever a rev is bumped.
+#
+# The ruff version here must match `ruff==` in backend/requirements-dev.txt so local and CI
+# lint results agree.
+minimum_pre_commit_version: "3.2.0"
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: e8f7d69b957a30acb2c875078d5fd012de24b64c # frozen: v0.16.7
+    hooks:
+      # Lint only (same as CI); config comes from backend/pyproject.toml.
+      - id: ruff-check
+        files: ^backend/
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: 83d9cd684c87d95d656c1458ef04895a7f1cbd8e # frozen: v8.30.1
+    hooks:
+      # Scans staged changes with .gitleaks.toml (picked up automatically from the repo root).
+      # This hook uses `language: golang`; pre-commit builds gitleaks from the pinned source.
+      - id: gitleaks
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # frozen: v6.0.0
+    hooks:
+      - id: check-yaml
+      - id: end-of-file-fixer
+        # Test fixtures may be byte-exact samples (hashes, archives); never rewrite them.
+        exclude: ^(backend/tests/data/|frontend/dist/)
+      - id: trailing-whitespace
+        exclude: ^(backend/tests/data/|frontend/dist/)
+      - id: detect-private-key
+        # backend/tests/: synthetic PEM blocks for the secrets analyzer and redaction tests.
+        # backend/app/core/redaction.py: holds redaction marker constants that start with a PEM private-key
+        # header, which this hook cannot tell apart from a real key. That one file is still checked by the
+        # gitleaks hook above, whose allowlist for it keeps reporting real key material.
+        exclude: ^(backend/tests/|backend/app/core/redaction\.py$)

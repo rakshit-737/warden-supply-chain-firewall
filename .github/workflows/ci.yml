@@ -1,3 +1,24 @@
+# Continuous integration for Warden X.
+#
+# Supply-chain hardening of this workflow:
+#   - Every action is pinned to a full 40-character commit SHA. The trailing comment is the release
+#     tag the SHA was resolved from on 2026-09-15 with the GitHub REST API
+#     (GET /repos/{owner}/{repo}/git/ref/tags/{tag}; annotated tags dereferenced through
+#     GET /repos/{owner}/{repo}/git/tags/{sha}) and cross-checked with `git ls-remote --tags`.
+#     Dependabot (github-actions ecosystem) bumps the SHA and the comment together.
+#   - The workflow token is read-only (contents: read); no job in this file widens it.
+#   - actions/checkout does not persist the token into .git/config (persist-credentials: false).
+#   - No github.event.* value is expanded inside a run: script.
+#   - Trivy and syft are not installed through marketplace actions. Each binary is downloaded from its
+#     official GitHub release and must match BOTH the checksums file published with that release AND
+#     the sha256 recorded in this file (taken from that checksums file and re-computed locally from
+#     the downloaded asset). Recording the digest here means a release asset that is later replaced
+#     together with its checksums file is still rejected. Dependabot cannot bump these pins: change
+#     version and digest together, by hand, after verifying the new release.
+#   - The PostgreSQL and Redis service images are pinned by multi-arch index digest, equal to the db and
+#     cache images in docker-compose.yml. Dependabot bumps docker-compose.yml but not these; keep them
+#     equal by hand.
+
 name: CI
 
 on:
@@ -5,55 +26,386 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  # One run per PR (or per ref for pushes). A new push to a PR cancels the superseded PR run;
+  # runs on main are never cancelled.
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
 jobs:
-  backend:
-    name: Backend — lint, security, test
-    runs-on: ubuntu-latest
+  backend-lint:
+    name: Backend lint (ruff)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Install ruff (exact pin from requirements-dev.txt)
+        run: |
+          ruff_pin="$(grep -oE '^ruff==[0-9][0-9.]*' requirements-dev.txt)"
+          python -m pip install "${ruff_pin}"
+
+      - name: ruff check
+        run: ruff check --output-format=github .
+
+  backend-tests:
+    name: Backend tests (Python 3.12)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
       - name: Install dependencies
-        run: pip install -r requirements-dev.txt
-      - name: Lint (ruff)
-        run: ruff check .
-      - name: Static security scan (bandit)
-        run: bandit -q -r app -x tests
-      - name: Dependency audit (pip-audit)
-        run: pip-audit -r requirements.txt
-        continue-on-error: true
+        run: python -m pip install -r requirements-dev.txt
+
       - name: Train model artifact
         run: python -m ml.train --n 4000
-      - name: Run tests
-        run: python -m pytest -q
+
+      - name: Run tests with coverage
+        run: >-
+          python -m pytest
+          --cov=app
+          --cov=cli
+          --cov-report=term-missing:skip-covered
+          --cov-report=xml:coverage.xml
+
+      - name: Upload coverage.xml
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: backend-coverage
+          path: backend/coverage.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+  backend-security:
+    name: Backend security (bandit, pip-audit)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Install bandit and pip-audit (exact pins from requirements-dev.txt)
+        run: |
+          bandit_pin="$(grep -oE '^bandit==[0-9][0-9.]*' requirements-dev.txt)"
+          pip_audit_pin="$(grep -oE '^pip-audit==[0-9][0-9.]*' requirements-dev.txt)"
+          python -m pip install "${bandit_pin}" "${pip_audit_pin}"
+
+      - name: Static security analysis (bandit)
+        run: bandit -q -r app -x tests
+
+      - name: Known-vulnerability audit of runtime dependencies (pip-audit)
+        # Deliberately NOT continue-on-error: a published advisory affecting a runtime dependency fails
+        # the build. --strict additionally fails the audit if any dependency cannot be collected.
+        run: pip-audit --strict --progress-spinner off -r requirements.txt
+
+  migrations-postgres:
+    name: Migrations on PostgreSQL + app start
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        # postgres:16-alpine (same major version as docker-compose.yml), pinned to the multi-arch index
+        # digest returned by registry-1.docker.io (Docker-Content-Digest header) on 2026-09-15.
+        image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+        env:
+          POSTGRES_USER: warden
+          # Not a secret: throwaway password for a disposable database that only exists for this job.
+          POSTGRES_PASSWORD: warden-ci-only
+          POSTGRES_DB: warden
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U warden -d warden"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        # Same image and digest as the `cache` service in docker-compose.yml (redis:7.4.11-alpine3.21,
+        # multi-arch index digest returned by registry-1.docker.io on 2026-09-15), so the smoke test
+        # starts the API against a live Redis the way the Compose deployment does. No password: the
+        # service only exists for this job.
+        image: redis:7.4.11-alpine3.21@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: postgresql+psycopg://warden:warden-ci-only@127.0.0.1:5432/warden
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Install runtime dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: alembic upgrade head
+        run: alembic upgrade head
+
+      - name: alembic downgrade 0001_initial
+        run: alembic downgrade 0001_initial
+
+      - name: alembic upgrade head (re-apply after downgrade)
+        run: alembic upgrade head
+
+      - name: Application start smoke test (ENV=production, migrated PostgreSQL, required Redis)
+        env:
+          ENV: production
+          # As in docker-compose.yml, Redis is required: with REDIS_OPTIONAL=false a Redis connection or
+          # client-option failure fails startup or readiness here instead of silently falling back to
+          # the in-process cache (the default, REDIS_OPTIONAL=true, would pass this test without Redis).
+          REDIS_URL: redis://127.0.0.1:6379/0
+          REDIS_OPTIONAL: "false"
+        run: |
+          set -euo pipefail
+          # Production settings refuse placeholder secrets, so generate throwaway values for this run
+          # and mask them in the log.
+          SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          FIRST_ADMIN_PASSWORD="$(python -c 'import secrets; print(secrets.token_urlsafe(24))')"
+          echo "::add-mask::${SECRET_KEY}"
+          echo "::add-mask::${FIRST_ADMIN_PASSWORD}"
+          export SECRET_KEY FIRST_ADMIN_PASSWORD
+
+          log="${RUNNER_TEMP}/uvicorn.log"
+          uvicorn app.main:app --host 127.0.0.1 --port 8000 > "${log}" 2>&1 &
+          server_pid=$!
+          trap 'kill "${server_pid}" 2>/dev/null || true' EXIT
+
+          fail() { echo "::error::$1"; cat "${log}"; exit 1; }
+
+          for _ in $(seq 1 60); do
+            if curl --silent --fail --output /dev/null http://127.0.0.1:8000/api/v1/health/live; then
+              break
+            fi
+            kill -0 "${server_pid}" 2>/dev/null || fail "uvicorn exited during startup"
+            sleep 1
+          done
+
+          curl --silent --show-error --fail http://127.0.0.1:8000/api/v1/health/live || fail "liveness probe failed"
+          echo
+          curl --silent --show-error --fail http://127.0.0.1:8000/api/v1/health/ready || fail "readiness probe failed"
+          echo
+          if grep -q "seed_failed" "${log}"; then
+            fail "bootstrap seed failed against the migrated schema"
+          fi
 
   frontend:
-    name: Frontend — typecheck & build
-    runs-on: ubuntu-latest
+    name: Frontend (lint, typecheck, test, build, audit)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: "20"
-      - run: npm install
-      - name: Type-check & build
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies from the lockfile
+        # --ignore-scripts: dependency lifecycle scripts (install-time code execution) never run in CI.
+        # The lockfile's only install scripts belong to esbuild, whose platform binary is also
+        # delivered as an optional dependency, and fsevents (macOS only).
+        run: npm ci --ignore-scripts
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Build
         run: npm run build
 
+      - name: Dependency audit (fails on high or critical)
+        run: npm audit --audit-level=high
+
   docker:
-    name: Docker images build
-    runs-on: ubuntu-latest
-    needs: [backend, frontend]
+    name: Container images (build, Trivy, SBOM)
+    needs: [backend-tests, frontend]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      TRIVY_VERSION: "0.74.0"
+      # sha256 of trivy_0.74.0_Linux-64bit.tar.gz as listed in trivy_0.74.0_checksums.txt (release v0.74.0).
+      TRIVY_SHA256: "2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a"
+      SYFT_VERSION: "1.51.1"
+      # sha256 of syft_1.51.1_linux_amd64.tar.gz as listed in syft_1.51.1_checksums.txt (release v1.51.1).
+      SYFT_SHA256: "8fcb33017a0dc1058298c923c436d19dfa68ae93968e0b423248542e3afb9fc3"
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4.4.0
+
       - name: Build backend image
-        run: docker build -t warden-backend ./backend
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: backend
+          file: backend/Dockerfile
+          tags: warden-backend:ci
+          load: true
+          push: false
+          # This image is never pushed. BuildKit attestations are switched off for the local load;
+          # the SBOM for the image is produced with syft below.
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=warden-backend
+          cache-to: type=gha,mode=max,scope=warden-backend
+
       - name: Build frontend image
-        run: docker build -t warden-frontend ./frontend
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          tags: warden-frontend:ci
+          load: true
+          push: false
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=warden-frontend
+          cache-to: type=gha,mode=max,scope=warden-frontend
+
+      - name: Install Trivy (pinned release, sha256-verified)
+        run: |
+          set -euo pipefail
+          archive="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          base="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
+          mkdir -p "${RUNNER_TEMP}/trivy"
+          cd "${RUNNER_TEMP}/trivy"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 \
+            --output "${archive}" "${base}/${archive}"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 \
+            --output checksums.txt "${base}/trivy_${TRIVY_VERSION}_checksums.txt"
+          # 1) must match the checksum published with the release ...
+          awk -v f="${archive}" '$2 == f' checksums.txt | sha256sum --check --strict -
+          # 2) ... and the digest recorded in this workflow.
+          echo "${TRIVY_SHA256}  ${archive}" | sha256sum --check --strict -
+          tar -xzf "${archive}" trivy
+          ./trivy --version
+
+      - name: Install syft (pinned release, sha256-verified)
+        run: |
+          set -euo pipefail
+          archive="syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+          base="https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}"
+          mkdir -p "${RUNNER_TEMP}/syft"
+          cd "${RUNNER_TEMP}/syft"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 \
+            --output "${archive}" "${base}/${archive}"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 \
+            --output checksums.txt "${base}/syft_${SYFT_VERSION}_checksums.txt"
+          awk -v f="${archive}" '$2 == f' checksums.txt | sha256sum --check --strict -
+          echo "${SYFT_SHA256}  ${archive}" | sha256sum --check --strict -
+          tar -xzf "${archive}" syft
+          ./syft version
+
+      # SBOMs are generated and uploaded before the vulnerability gate so they are available for
+      # triage even when the gate fails.
+      - name: Generate CycloneDX SBOMs (syft)
+        run: |
+          set -euo pipefail
+          mkdir -p sbom
+          "${RUNNER_TEMP}/syft/syft" scan docker:warden-backend:ci --quiet \
+            --output cyclonedx-json=sbom/warden-backend.cdx.json
+          "${RUNNER_TEMP}/syft/syft" scan docker:warden-frontend:ci --quiet \
+            --output cyclonedx-json=sbom/warden-frontend.cdx.json
+
+      - name: Upload SBOMs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: container-sboms
+          path: sbom/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Trivy image scan (fixable CRITICAL/HIGH vulnerabilities fail the build)
+        run: |
+          set -uo pipefail
+          status=0
+          for image in warden-backend:ci warden-frontend:ci; do
+            echo "::group::trivy image ${image}"
+            "${RUNNER_TEMP}/trivy/trivy" image \
+              --scanners vuln \
+              --severity CRITICAL,HIGH \
+              --ignore-unfixed \
+              --exit-code 1 \
+              --no-progress \
+              "${image}" || status=1
+            echo "::endgroup::"
+          done
+          exit "${status}"

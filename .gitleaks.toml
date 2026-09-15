@@ -1,0 +1,69 @@
+# Gitleaks configuration for Warden X.
+#
+# Used by:
+#   - .github/workflows/security.yml  full git-history scan with the pinned gitleaks v8.30.1 binary
+#   - .pre-commit-config.yaml         gitleaks hook on staged changes (developer machines)
+#
+# Strategy: inherit the complete default ruleset built into the gitleaks binary. No default rule is
+# disabled. The two allowlists below are the only exceptions, and each is as narrow as its content
+# allows. A reviewed false positive in a commit that is already in history belongs in .gitleaksignore
+# (by fingerprint): an inline `gitleaks:allow` comment cannot fix it, because the history scan keeps
+# re-reading the old commit.
+#
+# The path regexes accept both "/" and "\" as separators so the same file works for CI (Linux) and for
+# pre-commit on Windows developer machines. An optional leading "./" is tolerated for `gitleaks dir .`.
+
+title = "Warden X gitleaks configuration"
+
+[extend]
+useDefault = true
+
+# --- 1. Synthetic credentials in the backend test suite ---------------------------------------------
+#
+# Why: Warden X ships a secrets analyzer and a redaction layer (backend/app/core/redaction.py). Their
+# tests push realistic-looking but synthetic credentials (dummy API keys, throwaway PEM blocks,
+# test-only passwords such as those in backend/tests/conftest.py) through the detectors to prove they
+# are found and redacted.
+#
+# Accepted trade-off: a REAL secret committed under backend/tests/ is not reported by gitleaks, neither
+# by the pre-commit hook nor by the CI history scan. What remains:
+#   1. Reviewers must reject anything under backend/tests/ that looks live; the path may only hold
+#      synthetic values.
+#   2. The Trivy filesystem scan in security.yml also reads these files. Trivy's built-in "tests" allow
+#      rule would skip them (it matches every path containing "/test", "_test", "-test" or ".test"), so
+#      security.yml passes .github/trivy-secret.yaml, which disables that rule. That scan is report-only
+#      (results go to code scanning; the job never fails on them) and runs on pushes to main, weekly and
+#      on demand, not on pull requests. It can make a leaked secret visible after merge; it cannot block
+#      one.
+#
+# Frontend tests are deliberately not allowlisted: the default rules report nothing in frontend/src.
+[[allowlists]]
+description = "Synthetic credentials used by backend tests"
+paths = [
+  '''^(?:\./)?backend[\\/]tests[\\/]''',
+]
+
+# --- 2. Redaction marker constants in backend/app/core/redaction.py ---------------------------------
+#
+# redaction.py replaces private keys with a marker made of a PEM private-key header followed by
+# "[REDACTED]", and recognises that marker again (PRIVATE_KEY_MARKER, _MARKER_RE). The default
+# `private-key` rule matches from such a header to the next PEM trailer at least 64 characters later, so
+# these constants, and their earlier form in commit 10cea91, are reported although they hold no key
+# material. (This comment deliberately does not spell the header out, so this file is not flagged itself.)
+#
+# Such a finding is ignored only when ALL of the following hold (condition = "AND"):
+#   - the rule is private-key and the file is exactly backend/app/core/redaction.py, and
+#   - the matched text contains "[REDACTED]" and no run of 40 or more base64 characters
+#     ([A-Za-z0-9+/]). Every body line of a real PEM key is a 64-character base64 run, so key material
+#     in this file is still reported, including a key placed directly after a marker.
+[[allowlists]]
+description = "Redaction marker constants in redaction.py (no key material)"
+targetRules = ["private-key"]
+condition = "AND"
+paths = [
+  '''^(?:\./)?backend[\\/]app[\\/]core[\\/]redaction\.py$''',
+]
+regexTarget = "match"
+regexes = [
+  '''^(?:[^A-Za-z0-9+/]|[A-Za-z0-9+/]{1,39}[^A-Za-z0-9+/])*[A-Za-z0-9+/]{0,39}\[REDACTED\](?:[^A-Za-z0-9+/]|[A-Za-z0-9+/]{1,39}[^A-Za-z0-9+/])*[A-Za-z0-9+/]{0,39}$''',
+]

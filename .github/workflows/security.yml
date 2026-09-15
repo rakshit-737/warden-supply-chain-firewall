@@ -1,0 +1,296 @@
+# Scheduled / on-demand security analysis of the Warden X repository itself.
+#
+#   codeql                CodeQL for Python and JavaScript/TypeScript with the security-extended query suite
+#   gitleaks              secret scan over the FULL git history, configured by .gitleaks.toml
+#   trivy-fs              Trivy filesystem scan: dependency vulnerabilities, secrets, misconfigurations
+#   trivy-compose-images  Trivy vulnerability scan of each digest-pinned third-party image in docker-compose.yml
+#
+# Every job publishes SARIF to GitHub code scanning. Blocking gates for pull requests (pip-audit,
+# npm audit, Trivy scan of the two images built from this repository) live in ci.yml; here CodeQL and
+# Trivy report into code scanning for triage. The gitleaks job additionally FAILS when a leak is
+# found, because a leaked credential needs rotation, not just triage.
+#
+# The third-party Compose images (postgres, redis, prometheus, grafana) are scanned here rather than
+# gated in ci.yml: a CVE published against an upstream image would otherwise fail every unrelated pull
+# request until the digest is bumped. Dependabot (docker-compose ecosystem) proposes those bumps; this
+# job keeps the known vulnerabilities of the pinned digests visible in the meantime.
+#
+# Supply-chain hardening of this workflow:
+#   - Actions are pinned to full commit SHAs resolved on 2026-09-15 via the GitHub REST API
+#     (GET /repos/{owner}/{repo}/git/ref/tags/{tag}, annotated tags dereferenced with
+#     GET /repos/{owner}/{repo}/git/tags/{sha}); the trailing comment is the release tag.
+#   - gitleaks and Trivy run as binaries from their official GitHub releases, not through marketplace
+#     actions (gitleaks-action requires a license key for organisations; the Trivy ecosystem supply
+#     chain was compromised in March 2026, advisory GHSA-69fq-xp46-6x23). Each archive must match BOTH the checksums
+#     file published with the release AND the sha256 recorded below, which was taken from that
+#     checksums file and re-computed locally from the downloaded asset. Dependabot cannot bump these
+#     pins: update version and digest together, by hand.
+#   - The default token is read-only; only jobs that upload SARIF get security-events: write.
+#   - actions/checkout does not persist the token into .git/config.
+#   - Image references from docker-compose.yml reach the scan step only through an environment
+#     variable, after being checked against a strict name:tag@sha256:<digest> pattern.
+
+name: Security
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Weekly, Monday 04:23 UTC.
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      security-events: write
+      # If this repository is ever made private, codeql-action also needs `actions: read`.
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, javascript-typescript]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          languages: ${{ matrix.language }}
+          # Both languages are extracted from source; no build is run.
+          build-mode: none
+          queries: security-extended
+
+      - name: Analyse
+        uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          category: /language:${{ matrix.language }}
+
+  gitleaks:
+    name: Gitleaks (full git history)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      GITLEAKS_VERSION: "8.30.1"
+      # sha256 of gitleaks_8.30.1_linux_x64.tar.gz as listed in gitleaks_8.30.1_checksums.txt (release v8.30.1).
+      GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+    steps:
+      - name: Check out repository (full history)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install gitleaks (pinned release, sha256-verified)
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          mkdir -p "${RUNNER_TEMP}/gitleaks"
+          cd "${RUNNER_TEMP}/gitleaks"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 \
+            --output "${archive}" "${base}/${archive}"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 \
+            --output checksums.txt "${base}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          # 1) must match the checksum published with the release ...
+          awk -v f="${archive}" '$2 == f' checksums.txt | sha256sum --check --strict -
+          # 2) ... and the digest recorded in this workflow.
+          echo "${GITLEAKS_SHA256}  ${archive}" | sha256sum --check --strict -
+          tar -xzf "${archive}" gitleaks
+          ./gitleaks version
+
+      - name: Scan full git history
+        # `gitleaks git` walks every commit reachable from all refs. --redact keeps secret values out of
+        # the job log and out of the SARIF report. A .gitleaksignore file at the repository root, if
+        # present, is honoured (fingerprints of reviewed false positives).
+        run: |
+          "${RUNNER_TEMP}/gitleaks/gitleaks" git \
+            --config .gitleaks.toml \
+            --redact \
+            --no-banner \
+            --report-format sarif \
+            --report-path gitleaks.sarif \
+            --exit-code 1 \
+            .
+
+      - name: Upload gitleaks SARIF
+        # Runs when leaks were found (the scan step failed) as long as a report was written.
+        if: ${{ !cancelled() && hashFiles('gitleaks.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          sarif_file: gitleaks.sarif
+          category: gitleaks
+
+  trivy-fs:
+    name: Trivy filesystem scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      TRIVY_VERSION: "0.74.0"
+      # sha256 of trivy_0.74.0_Linux-64bit.tar.gz as listed in trivy_0.74.0_checksums.txt (release v0.74.0).
+      TRIVY_SHA256: "2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Trivy (pinned release, sha256-verified)
+        run: |
+          set -euo pipefail
+          archive="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          base="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
+          mkdir -p "${RUNNER_TEMP}/trivy"
+          cd "${RUNNER_TEMP}/trivy"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 \
+            --output "${archive}" "${base}/${archive}"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 \
+            --output checksums.txt "${base}/trivy_${TRIVY_VERSION}_checksums.txt"
+          awk -v f="${archive}" '$2 == f' checksums.txt | sha256sum --check --strict -
+          echo "${TRIVY_SHA256}  ${archive}" | sha256sum --check --strict -
+          tar -xzf "${archive}" trivy
+          ./trivy --version
+
+      - name: Scan repository (vuln, secret, misconfig)
+        id: scan
+        # Report-only (--exit-code 0): findings are triaged in code scanning. The report is written
+        # outside the checkout so it is never part of the scanned tree.
+        # .github/trivy-secret.yaml disables Trivy's built-in "tests" allow rule, so the secret scanner
+        # also reads backend/tests/, which .gitleaks.toml allowlists. Trivy silently uses its defaults
+        # when the config file is missing, hence the explicit check.
+        run: |
+          set -euo pipefail
+          test -s .github/trivy-secret.yaml
+          "${RUNNER_TEMP}/trivy/trivy" fs \
+            --scanners vuln,secret,misconfig \
+            --secret-config .github/trivy-secret.yaml \
+            --format sarif \
+            --output "${RUNNER_TEMP}/trivy-fs.sarif" \
+            --exit-code 0 \
+            --no-progress \
+            .
+
+      - name: Upload Trivy SARIF
+        if: ${{ !cancelled() && steps.scan.outcome == 'success' }}
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          sarif_file: ${{ runner.temp }}/trivy-fs.sarif
+          category: trivy-fs
+
+  compose-images:
+    name: List digest-pinned Compose images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      images: ${{ steps.list.outputs.images }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Extract image references
+        id: list
+        # Third-party images in docker-compose.yml are pinned as name:tag@sha256:<digest>; the images
+        # built from this repository (warden-x-*:local) carry no digest and are scanned in ci.yml.
+        run: |
+          set -euo pipefail
+          images="$(sed -n 's/^[[:space:]]*image:[[:space:]]*\([^[:space:]#]*@sha256:[0-9a-f]\{64\}\)[[:space:]]*$/\1/p' docker-compose.yml | sort -u)"
+          if [ -z "${images}" ]; then
+            echo "::error::No digest-pinned images found in docker-compose.yml"
+            exit 1
+          fi
+          while IFS= read -r ref; do
+            if ! [[ "${ref}" =~ ^[a-z0-9][a-z0-9._/-]*:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::Unexpected image reference in docker-compose.yml: ${ref}"
+              exit 1
+            fi
+          done <<< "${images}"
+          echo "images=$(printf '%s\n' "${images}" | jq --raw-input --slurp --compact-output 'split("\n") | map(select(length > 0))')" >> "${GITHUB_OUTPUT}"
+
+  trivy-compose-images:
+    name: Trivy image scan (${{ matrix.image }})
+    needs: compose-images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.compose-images.outputs.images) }}
+    env:
+      IMAGE: ${{ matrix.image }}
+      TRIVY_VERSION: "0.74.0"
+      # sha256 of trivy_0.74.0_Linux-64bit.tar.gz as listed in trivy_0.74.0_checksums.txt (release v0.74.0).
+      TRIVY_SHA256: "2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Trivy (pinned release, sha256-verified)
+        run: |
+          set -euo pipefail
+          archive="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          base="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
+          mkdir -p "${RUNNER_TEMP}/trivy"
+          cd "${RUNNER_TEMP}/trivy"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 \
+            --output "${archive}" "${base}/${archive}"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 \
+            --output checksums.txt "${base}/trivy_${TRIVY_VERSION}_checksums.txt"
+          awk -v f="${archive}" '$2 == f' checksums.txt | sha256sum --check --strict -
+          echo "${TRIVY_SHA256}  ${archive}" | sha256sum --check --strict -
+          tar -xzf "${archive}" trivy
+          ./trivy --version
+
+      - name: Scan image
+        id: scan
+        # Report-only, same selection as the ci.yml image gate (fixable CRITICAL/HIGH). The image is
+        # pulled by digest straight from the registry; no Docker daemon is involved.
+        run: |
+          set -euo pipefail
+          name="${IMAGE%%@*}"
+          name="${name%:*}"
+          echo "category=trivy-image-${name//\//-}" >> "${GITHUB_OUTPUT}"
+          "${RUNNER_TEMP}/trivy/trivy" image \
+            --image-src remote \
+            --scanners vuln \
+            --severity CRITICAL,HIGH \
+            --ignore-unfixed \
+            --format sarif \
+            --output "${RUNNER_TEMP}/trivy-image.sarif" \
+            --exit-code 0 \
+            --no-progress \
+            "${IMAGE}"
+
+      - name: Upload Trivy SARIF
+        if: ${{ !cancelled() && steps.scan.outcome == 'success' }}
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          sarif_file: ${{ runner.temp }}/trivy-image.sarif
+          category: ${{ steps.scan.outputs.category }}
