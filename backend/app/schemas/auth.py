@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import uuid
-from datetime import datetime
-
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from app.db.models import Role
+from app.core.permissions import Role
+from app.schemas.user import UserOut
+
+__all__ = ["LoginRequest", "RegisterRequest", "TokenResponse", "UserOut"]
 
 
 class LoginRequest(BaseModel):
@@ -16,22 +16,15 @@ class LoginRequest(BaseModel):
 
 
 class RegisterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     email: EmailStr
     password: str = Field(min_length=12, max_length=256, description="Minimum 12 characters")
-    role: Role = Role.viewer
+    # Legacy v1 names are accepted: "analyst" -> security_analyst, "viewer" -> read_only.
+    role: Role = Role.read_only
 
 
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in: int
-
-
-class UserOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    email: EmailStr
-    role: Role
-    is_active: bool
-    created_at: datetime

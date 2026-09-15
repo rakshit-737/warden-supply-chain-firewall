@@ -15,8 +15,26 @@ class Base(DeclarativeBase):
     pass
 
 
-def _utcnow() -> datetime:
+def utcnow() -> datetime:
+    """Timezone-aware current UTC time (the only clock the data layer uses)."""
     return datetime.now(timezone.utc)
+
+
+# Backwards-compatible private alias.
+_utcnow = utcnow
+
+
+def as_utc(value: datetime | None) -> datetime | None:
+    """Normalise a datetime read from any backend to aware UTC.
+
+    SQLite does not store tz offsets, so ``DateTime(timezone=True)`` values come back naive;
+    Warden only ever writes UTC, so a naive value is interpreted as UTC.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 class UUIDPrimaryKey:
@@ -25,5 +43,5 @@ class UUIDPrimaryKey:
 
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, server_default=func.now(), nullable=False
+        DateTime(timezone=True), default=utcnow, server_default=func.now(), nullable=False
     )

@@ -8,11 +8,12 @@ are written once and behave correctly on both.
 
 from __future__ import annotations
 
+import enum
 import uuid
 
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-from sqlalchemy.types import CHAR, JSON, TypeDecorator
+from sqlalchemy.types import CHAR, JSON, String, TypeDecorator
 
 
 class GUID(TypeDecorator):
@@ -51,3 +52,36 @@ class PortableJSON(TypeDecorator):
         if dialect.name == "postgresql":
             return dialect.type_descriptor(JSONB())
         return dialect.type_descriptor(JSON())
+
+
+class StringEnum(TypeDecorator):
+    """A Python ``str`` enum stored as a plain VARCHAR (a *non-native* enum).
+
+    Unlike a native PostgreSQL ENUM type, adding a member never needs a type migration.
+    Values are converted through the enum constructor in both directions, so an enum that
+    defines ``_missing_`` (e.g. :class:`app.core.permissions.Role`, which maps legacy v1
+    names) is honoured on write *and* on read. A stored value the enum cannot resolve
+    raises ``ValueError`` instead of being silently passed through (fail closed).
+    """
+
+    impl = String
+    cache_ok = True
+
+    def __init__(self, enum_class: type[enum.Enum], length: int = 32) -> None:
+        super().__init__(length=length)
+        self.enum_class = enum_class
+        self.length = length
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        return self.enum_class(value).value
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        return self.enum_class(value)
+
+    @property
+    def python_type(self):
+        return self.enum_class
