@@ -1,284 +1,293 @@
-"""Registry fetcher — the *only* component that touches the network or untrusted archives.
+"""Registry fetcher — builds the hostile-input :class:`PackageContext` for a package scan.
 
-Responsibilities and the security guarantees each provides:
+This is the only analysis component that touches the network or untrusted archives; every
+analyzer downstream works on the returned in-memory context. **No package code is executed.**
 
-* Resolve ``(name, version)`` against the PyPI JSON API and compute provenance metadata
-  (age, maintainer count, release cadence) for the metadata analyzer.
-* Download the source artifact under a hard **size cap** (defends against oversized
-  downloads) and a **wall-clock timeout** (defends against slowloris-style stalls).
-* Extract the archive with **path-traversal (Zip-Slip) guards**, a **decompressed-size
-  cap** and **file-count cap** (defends against zip/tar bombs), rejecting symlinks and
-  absolute members.
-* Return only decoded, per-file-size-capped text for Python and build files. **No package
-  code is ever executed.**
+Pipeline and the guarantee each step provides:
 
-Everything downstream operates purely on the returned in-memory context.
+1. **Resolve** ``(name, version)`` with :class:`~app.analysis.acquisition.pypi.PyPIClient`
+   (validated names, host allowlists, size caps, bounded metadata). **Fail closed:** an
+   explicitly requested version that does not exist raises ``AnalysisError(code=
+   "version_not_found", status_code=404)`` while ``FAIL_ON_VERSION_NOT_FOUND`` is enabled —
+   a verdict for a different version is never returned silently.
+2. **Choose an artifact:** the sdist (it is what builds run from, so install-time code lives
+   there), otherwise a wheel, preferring ``py3-none-any``. Artifacts whose registry-declared size
+   exceeds ``MAX_DOWNLOAD_BYTES`` are not chosen. No usable artifact → ``FETCH_FAILED``.
+3. **Download and verify:** the sha256 of the downloaded bytes is compared with the registry
+   digest; a mismatch adds a critical ``HASH_MISMATCH`` finding and analysis continues on the
+   bytes actually received. A deterministic refusal (too large, artifact host not allowlisted)
+   adds ``FETCH_FAILED``; transient network/HTTP failures raise ``AnalysisError`` so no verdict is
+   produced from an incomplete fetch.
+4. **Extract** with :class:`~app.analysis.extraction.safe_archive.SafeArchiveReader`. A tripped
+   hostile-input guard adds ``EXTRACTION_ABORTED``; members read before the abort are kept.
+5. **Wheel inventory (optional):** when an sdist was analysed and wheel analysis is enabled, one
+   wheel is inventoried too (``wheel_inventory`` / ``wheel_files``) so sdist/wheel divergence can
+   be detected. The wheel reader gets whatever text budget the sdist left, but never less than
+   ``WHEEL_MIN_TEXT_BYTES``, so a large benign sdist cannot switch the divergence check off. A
+   wheel extraction abort of any kind is reported as ``EXTRACTION_ABORTED``; download failures
+   never fail the scan.
+
+``_extract_tar`` / ``_extract_zip`` / ``_is_unsafe_path`` are kept for v1 callers; the extract
+shims raise ``AnalysisError`` whenever the reader aborts (traversal, bombs, corruption) or had
+to leave text members unanalysed because of the retention budget (v1 was all-or-nothing).
 """
 
 from __future__ import annotations
 
-import io
-import tarfile
-import zipfile
-from datetime import datetime, timezone
+import threading
 
 import httpx
 
-from app.analysis.analyzers.base import PackageContext, SourceFile
-from app.analysis.signals import Code, Severity, Signal
+from app.analysis.acquisition.pypi import PyPIClient, is_pure_python_wheel, wheel_tags
+from app.analysis.analyzers.base import ArtifactInfo, PackageContext, ScanOptions, SourceFile
+from app.analysis.extraction.safe_archive import (
+    ABORTING_PATH_PROBLEMS,
+    TEXT_BUDGET_SKIP_REASON,
+    ExtractionResult,
+    SafeArchiveReader,
+    normalize_member_path,
+)
+from app.analysis.findings import Category, Finding, Provenance
+from app.analysis.signals import Code, Severity
 from app.core.config import settings
 from app.core.errors import AnalysisError
+from app.core.http import OutboundHTTPError, SafeHttpClient
 from app.core.logging import get_logger
+from app.core.redaction import sanitize_text
 
 log = get_logger("warden.fetcher")
 
-# Only files we actually analyse are retained (keeps memory bounded, avoids binary blobs).
-_INTERESTING_SUFFIXES = (".py", ".cfg", ".toml", ".txt", ".sh", ".ps1", ".js")
-_ALWAYS_KEEP = {"setup.py", "setup.cfg", "pyproject.toml", "PKG-INFO"}
+PIPELINE_PROVENANCE = "analysis-pipeline"
+WHEEL_FILE_SUFFIXES = (".py", ".pth")
+# Deterministic refusals: the package itself cannot be fetched within policy.
+_REFUSAL_KINDS = frozenset({"too_large", "host_not_allowed", "scheme"})
+# Abort reasons that indicate a deliberately malformed archive rather than a budget limit.
+_HOSTILE_ABORTS = frozenset({
+    "unsafe_path", "decompressed_size_exceeded", "declared_size_exceeded", "tar_metadata_header_too_large",
+    "tar_metadata_exceeded", "tar_metadata_chain_too_long", "suspicious_compression_ratio",
+    "inconsistent_member_header", "member_size_mismatch", "sparse_member_unsupported",
+    "priority_text_budget_exceeded", "lzma_dictionary_too_large",
+})
+# Floor for the wheel reader's text budget, independent of how much the sdist retained.
+WHEEL_MIN_TEXT_BYTES = 16 * 1024 * 1024
+
+
+# --------------------------------------------------------------------------- artifact choice
+def _within_download_cap(artifact: ArtifactInfo) -> bool:
+    return artifact.size is None or artifact.size <= settings.MAX_DOWNLOAD_BYTES
+
+
+def _is_wheel(artifact: ArtifactInfo) -> bool:
+    return artifact.packagetype == "bdist_wheel" or artifact.filename.lower().endswith(".whl")
+
+
+def choose_wheel(artifacts: list[ArtifactInfo]) -> ArtifactInfo | None:
+    """Best wheel to inventory: pure ``py3`` first, then other pure wheels, then any wheel."""
+
+    def rank(artifact: ArtifactInfo) -> tuple[int, str]:
+        tags = wheel_tags(artifact.filename)
+        pure = is_pure_python_wheel(artifact.filename)
+        if pure and tags and "py3" in tags[0].split("."):
+            return 0, artifact.filename
+        return (1 if pure else 2), artifact.filename
+
+    wheels = [a for a in artifacts if _is_wheel(a) and _within_download_cap(a)]
+    return min(wheels, key=rank) if wheels else None
+
+
+def choose_artifact(artifacts: list[ArtifactInfo]) -> ArtifactInfo | None:
+    """The sdist when one is available within the download cap (``.tar.gz`` preferred), else a wheel."""
+    sdists = [a for a in artifacts if a.packagetype == "sdist" and _within_download_cap(a)]
+    if sdists:
+        return min(sdists, key=lambda a: (not a.filename.lower().endswith(".tar.gz"), a.filename))
+    return choose_wheel(artifacts)
+
+
+# --------------------------------------------------------------------------- context findings
+def _fetch_failed(message: str, evidence: dict) -> Finding:
+    return Finding(Code.FETCH_FAILED, Severity.medium, 3.0, message, evidence, confidence=1.0,
+                   category=Category.PIPELINE, provenance=PIPELINE_PROVENANCE)
+
+
+def _hash_mismatch(artifact: ArtifactInfo) -> Finding:
+    expected = artifact.digests.get("sha256") or ""
+    actual = artifact.downloaded_sha256 or ""
+    return Finding(
+        Code.HASH_MISMATCH, Severity.critical, 10.0,
+        f"Downloaded {artifact.filename} does not match the sha256 digest published by the registry",
+        {"artifact": artifact.filename, "algorithm": "sha256",
+         "expected_digest_prefix": expected[:12], "actual_digest_prefix": actual[:12]},
+        confidence=0.98, category=Category.INTEGRITY, provenance=Provenance.REGISTRY,
+    )
+
+
+def _extraction_aborted(artifact: ArtifactInfo, result: ExtractionResult) -> Finding:
+    reason = result.aborted_reason or "unknown"
+    hostile = reason in _HOSTILE_ABORTS
+    return Finding(
+        Code.EXTRACTION_ABORTED, Severity.high if hostile else Severity.medium, 6.0 if hostile else 4.0,
+        f"Archive {artifact.filename} failed safe-extraction checks ({reason}); analysis is partial",
+        {
+            "artifact": artifact.filename,
+            "reason": reason,
+            "detail": sanitize_text(result.abort_detail, max_len=200) if result.abort_detail else None,
+            "archive_format": result.archive_format,
+            "members_seen": result.stats.get("members"),
+        },
+        confidence=0.95 if hostile else 0.9, category=Category.INTEGRITY, provenance=PIPELINE_PROVENANCE,
+    )
 
 
 class RegistryFetcher:
-    def __init__(self, client: httpx.Client | None = None) -> None:
-        # The HTTP client is created lazily so importing the app performs no I/O setup
-        # and unit tests never construct a real network client.
+    def __init__(
+        self,
+        client: httpx.Client | None = None,
+        *,
+        pypi: PyPIClient | None = None,
+        reader: SafeArchiveReader | None = None,
+    ) -> None:
+        # Clients are created lazily so importing the app performs no network-client setup and
+        # unit tests never construct a real client. A supplied ``httpx.Client`` is wrapped in
+        # SafeHttpClient so allowlists, size caps and redirect checks still apply.
         self._client_override = client
-        self._client_instance: httpx.Client | None = None
+        self._pypi_override = pypi
+        self._pypi_instance: PyPIClient | None = None
+        self._reader = reader or SafeArchiveReader()
+        self._lock = threading.Lock()
 
     @property
-    def _client(self) -> httpx.Client:
-        if self._client_override is not None:
-            return self._client_override
-        if self._client_instance is None:
-            self._client_instance = httpx.Client(
-                timeout=settings.FETCH_TIMEOUT_SECONDS,
-                follow_redirects=True,
-                headers={"User-Agent": "Warden-SupplyChainFirewall/1.0"},
-            )
-        return self._client_instance
+    def pypi(self) -> PyPIClient:
+        if self._pypi_override is not None:
+            return self._pypi_override
+        with self._lock:
+            if self._pypi_instance is None:
+                self._pypi_instance = self._make_pypi()
+            return self._pypi_instance
 
-    # -- public API --------------------------------------------------------
-    def build_context(self, name: str, version: str | None) -> PackageContext:
-        info, resolved_version, sdist_url, version_found = self._resolve(name, version)
+    def _make_pypi(self) -> PyPIClient:
+        if self._client_override is None:
+            return PyPIClient()
+        timeout = float(settings.FETCH_TIMEOUT_SECONDS)
+        budget = float(settings.SCAN_TIMEOUT_SECONDS)
+        registry = SafeHttpClient(name="pypi-registry", allowed_hosts=settings.REGISTRY_HOST_ALLOWLIST,
+                                  max_response_bytes=settings.MAX_METADATA_BYTES, timeout=timeout,
+                                  client=self._client_override, total_timeout=budget)
+        artifacts = SafeHttpClient(name="pypi-artifacts", allowed_hosts=settings.ARTIFACT_HOST_ALLOWLIST,
+                                   max_response_bytes=settings.MAX_DOWNLOAD_BYTES, timeout=timeout,
+                                   client=self._client_override, total_timeout=budget)
+        return PyPIClient(registry_http=registry, artifact_http=artifacts)
+
+    def close(self) -> None:
+        if self._pypi_instance is not None:
+            self._pypi_instance.close()
+
+    # ------------------------------------------------------------------ public API
+    def build_context(
+        self, name: str, version: str | None = None, options: ScanOptions | None = None
+    ) -> PackageContext:
+        options = options if options is not None else ScanOptions()
+        pypi = self.pypi
+        release = pypi.resolve(name, version)
+        if not release.version_found:
+            if release.requested_version is None:
+                raise AnalysisError("PyPI registry returned no latest version", code="registry_malformed")
+            if settings.FAIL_ON_VERSION_NOT_FOUND:
+                raise AnalysisError(
+                    f"Version '{release.requested_version}' of '{release.name}' not found on PyPI",
+                    code="version_not_found", status_code=404,
+                )
+            log.warning("version_not_found_analysing_latest", package=release.name)
+
         ctx = PackageContext(
             ecosystem="pypi",
-            name=name,
-            version=resolved_version,
-            metadata={**info, "_version_found": version_found},
+            name=release.name,
+            version=release.version or "unknown",
+            metadata=pypi.build_metadata(release),
+            releases=release.releases,
+            options=options,
         )
-        if not sdist_url:
-            ctx.context_signals.append(Signal(
-                Code.FETCH_FAILED, Severity.medium, 3.0,
-                "No source distribution available to analyse (only wheels/none)",
-                {"package": name, "version": resolved_version},
+        ctx.artifacts = pypi.artifacts(release.files)
+        chosen = choose_artifact(ctx.artifacts)
+        if chosen is None:
+            oversized = sum(1 for a in ctx.artifacts if not _within_download_cap(a))
+            ctx.context_signals.append(_fetch_failed(
+                "No sdist or wheel is available to analyse within download limits",
+                {"package": release.name, "version": ctx.version, "artifact_count": len(ctx.artifacts),
+                 "oversized_artifacts": oversized},
             ))
             return ctx
 
-        try:
-            archive = self._download(sdist_url)
-            files = self._safe_extract(archive, sdist_url)
-        except AnalysisError:
-            raise
-        except Exception as exc:  # fail-safe: extraction issues raise risk, never crash
-            log.warning("extract_failed", error=str(exc), url=sdist_url)
-            ctx.context_signals.append(Signal(
-                Code.EXTRACTION_ABORTED, Severity.medium, 4.0,
-                "Package archive could not be safely extracted", {"reason": str(exc)[:120]},
-            ))
+        data = self._download(pypi, chosen, ctx, fatal=True)
+        if data is None:
             return ctx
-
-        ctx.files = files
+        ctx.analyzed_artifact = chosen
+        result = self._reader.read(data, chosen.filename)
+        ctx.files, ctx.inventory, ctx.binaries = result.files, result.inventory, result.binaries
+        if result.aborted:
+            ctx.context_signals.append(_extraction_aborted(chosen, result))
+        if chosen.packagetype == "sdist" and options.analyze_wheels and settings.ANALYZE_WHEELS:
+            self._add_wheel_inventory(pypi, ctx, retained_text=sum(len(f.text) for f in result.files))
         return ctx
 
-    # -- metadata resolution ----------------------------------------------
-    def _resolve(self, name: str, version: str | None):
-        url = f"{settings.PYPI_JSON_BASE}/{name}/json"
+    # ------------------------------------------------------------------ helpers
+    def _download(self, pypi: PyPIClient, artifact: ArtifactInfo, ctx: PackageContext, *, fatal: bool) -> bytes | None:
         try:
-            resp = self._client.get(url)
-        except httpx.HTTPError as exc:
-            raise AnalysisError(f"Registry unreachable: {exc}") from exc
-        if resp.status_code == 404:
-            raise AnalysisError(f"Package '{name}' not found on PyPI", code="package_not_found")
-        if resp.status_code >= 400:
-            raise AnalysisError(f"Registry error {resp.status_code} for '{name}'")
+            data = pypi.download(artifact)
+        except OutboundHTTPError as exc:
+            log.warning("artifact_download_failed", artifact=artifact.filename, kind=exc.kind, status=exc.status)
+            if not fatal:
+                return None
+            if exc.kind in _REFUSAL_KINDS:
+                ctx.context_signals.append(_fetch_failed(
+                    f"Artifact {artifact.filename} was not downloaded ({exc.kind})",
+                    {"artifact": artifact.filename, "reason": exc.kind, "declared_size": artifact.size},
+                ))
+                return None
+            raise AnalysisError(f"Artifact download failed ({exc.kind})", code="artifact_unavailable") from exc
+        if artifact.hash_verified is False:
+            log.warning("artifact_hash_mismatch", artifact=artifact.filename)
+            ctx.context_signals.append(_hash_mismatch(artifact))
+        return data
 
-        data = resp.json()
-        info = data.get("info", {})
-        releases: dict = data.get("releases", {})
-
-        version_found = True
-        resolved = version
-        if version is None or version not in releases:
-            version_found = version is None
-            resolved = info.get("version")  # latest
-
-        # Provenance features.
-        info["_maintainer_count"] = _maintainer_count(info)
-        info["_age_days"] = _release_age_days(releases.get(resolved, []))
-        info["_releases_last_7d"] = _releases_last_7d(releases)
-
-        # Pick the sdist for the resolved version.
-        sdist_url = None
-        for artifact in releases.get(resolved, []):
-            if artifact.get("packagetype") == "sdist":
-                sdist_url = artifact.get("url")
-                break
-        # Fall back to the latest sdist if the exact version has none.
-        if sdist_url is None:
-            for artifact in data.get("urls", []):
-                if artifact.get("packagetype") == "sdist":
-                    sdist_url = artifact.get("url")
-                    break
-
-        # Keep only JSON-safe metadata fields we use (avoid storing huge blobs).
-        slim = {
-            k: info.get(k)
-            for k in (
-                "name", "version", "home_page", "project_urls", "summary",
-                "author", "license", "requires_python",
-                "_maintainer_count", "_age_days", "_releases_last_7d",
-            )
-        }
-        return slim, resolved or "unknown", sdist_url, version_found
-
-    # -- download with caps ------------------------------------------------
-    def _download(self, url: str) -> bytes:
-        if not url.startswith("https://") and not url.startswith("http://"):
-            raise AnalysisError("Refusing to fetch non-http(s) artifact URL")
-        buf = io.BytesIO()
+    def _add_wheel_inventory(self, pypi: PyPIClient, ctx: PackageContext, *, retained_text: int) -> None:
+        wheel = choose_wheel(ctx.artifacts)
+        if wheel is None:
+            return
         try:
-            with self._client.stream("GET", url) as resp:
-                if resp.status_code >= 400:
-                    raise AnalysisError(f"Artifact download failed ({resp.status_code})")
-                total = 0
-                for chunk in resp.iter_bytes(chunk_size=65536):
-                    total += len(chunk)
-                    if total > settings.MAX_DOWNLOAD_BYTES:
-                        raise AnalysisError("Artifact exceeds maximum allowed size")
-                    buf.write(chunk)
-        except httpx.HTTPError as exc:
-            raise AnalysisError(f"Artifact download error: {exc}") from exc
-        return buf.getvalue()
+            data = self._download(pypi, wheel, ctx, fatal=False)
+            if data is None:
+                return
+            floor = min(settings.MAX_EXTRACTED_BYTES, WHEEL_MIN_TEXT_BYTES)
+            budget = max(settings.MAX_EXTRACTED_BYTES - retained_text, floor)
+            result = SafeArchiveReader(max_text_bytes=budget, max_binary_bytes=0).read(data, wheel.filename)
+        except Exception as exc:  # wheel inventory is best-effort; never fail the scan
+            log.warning("wheel_inventory_failed", artifact=wheel.filename, error_type=type(exc).__name__)
+            return
+        ctx.wheel_inventory = result.inventory
+        ctx.wheel_files = [f for f in result.files if f.relpath.lower().endswith(WHEEL_FILE_SUFFIXES)]
+        if result.aborted:
+            ctx.context_signals.append(_extraction_aborted(wheel, result))
 
-    # -- safe extraction ---------------------------------------------------
-    def _safe_extract(self, archive: bytes, url: str) -> list[SourceFile]:
-        if url.endswith(".zip"):
-            return self._extract_zip(archive)
-        return self._extract_tar(archive)
+    # ------------------------------------------------------------------ v1 compatibility shims
+    def _compat_extract(self, archive: bytes, filename: str) -> list[SourceFile]:
+        result = self._reader.read(archive, filename)
+        budget_skipped = any(e.skipped_reason == TEXT_BUDGET_SKIP_REASON for e in result.inventory)
+        if result.aborted or budget_skipped:
+            reason = result.aborted_reason or TEXT_BUDGET_SKIP_REASON
+            raise AnalysisError(f"Archive failed safe-extraction checks ({reason})", code="extraction_aborted")
+        return result.files
 
     def _extract_tar(self, archive: bytes) -> list[SourceFile]:
-        files: list[SourceFile] = []
-        total_bytes = 0
-        count = 0
-        with tarfile.open(fileobj=io.BytesIO(archive), mode="r:*") as tar:
-            for member in tar:
-                count += 1
-                if count > settings.MAX_EXTRACTED_FILES:
-                    raise AnalysisError("Archive contains too many files (bomb guard)")
-                if not member.isfile():
-                    continue  # skip dirs, and crucially symlinks/devices
-                if member.issym() or member.islnk():
-                    continue
-                if _is_unsafe_path(member.name):
-                    raise AnalysisError(f"Unsafe path in archive: {member.name}")
-                if member.size > settings.MAX_ANALYZED_FILE_BYTES * 4:
-                    continue
-                if not _is_interesting(member.name):
-                    continue
-                total_bytes += member.size
-                if total_bytes > settings.MAX_EXTRACTED_BYTES:
-                    raise AnalysisError("Archive decompressed size exceeds cap (bomb guard)")
-                fh = tar.extractfile(member)
-                if fh is None:
-                    continue
-                files.append(_read_source(member.name, fh.read()))
-        return files
+        return self._compat_extract(archive, "archive.tar")
 
     def _extract_zip(self, archive: bytes) -> list[SourceFile]:
-        files: list[SourceFile] = []
-        total_bytes = 0
-        with zipfile.ZipFile(io.BytesIO(archive)) as zf:
-            infos = zf.infolist()
-            if len(infos) > settings.MAX_EXTRACTED_FILES:
-                raise AnalysisError("Archive contains too many files (bomb guard)")
-            for zi in infos:
-                if zi.is_dir():
-                    continue
-                if _is_unsafe_path(zi.filename):
-                    raise AnalysisError(f"Unsafe path in archive: {zi.filename}")
-                if not _is_interesting(zi.filename):
-                    continue
-                if zi.file_size > settings.MAX_ANALYZED_FILE_BYTES * 4:
-                    continue
-                total_bytes += zi.file_size
-                if total_bytes > settings.MAX_EXTRACTED_BYTES:
-                    raise AnalysisError("Archive decompressed size exceeds cap (bomb guard)")
-                with zf.open(zi) as fh:
-                    files.append(_read_source(zi.filename, fh.read()))
-        return files
+        return self._compat_extract(archive, "archive.zip")
 
 
-# --- helpers ---------------------------------------------------------------
 def _is_unsafe_path(name: str) -> bool:
-    n = name.replace("\\", "/")
-    return n.startswith("/") or ".." in n.split("/") or n.startswith("~")
+    """v1 helper: True for member names that escape the extraction root (or start with ``~``)."""
+    _, problem = normalize_member_path(name)
+    return problem in ABORTING_PATH_PROBLEMS or str(name).replace("\\", "/").startswith("~")
 
 
-def _is_interesting(name: str) -> bool:
-    base = name.replace("\\", "/").split("/")[-1]
-    return base in _ALWAYS_KEEP or name.endswith(_INTERESTING_SUFFIXES)
-
-
-def _read_source(name: str, raw: bytes) -> SourceFile:
-    truncated = False
-    if len(raw) > settings.MAX_ANALYZED_FILE_BYTES:
-        raw = raw[: settings.MAX_ANALYZED_FILE_BYTES]
-        truncated = True
-    text = raw.decode("utf-8", errors="replace")
-    rel = name.replace("\\", "/")
-    # Drop the leading "pkg-1.0/" top-level directory for cleaner relpaths.
-    parts = rel.split("/", 1)
-    rel = parts[1] if len(parts) == 2 else rel
-    return SourceFile(relpath=rel, text=text, size=len(raw), truncated=truncated)
-
-
-def _maintainer_count(info: dict) -> int:
-    names = set()
-    for key in ("author", "maintainer"):
-        val = info.get(key)
-        if val:
-            names.update(p.strip() for p in str(val).split(",") if p.strip())
-    return max(len(names), 0)
-
-
-def _release_age_days(artifacts: list) -> float | None:
-    for a in artifacts:
-        ts = a.get("upload_time_iso_8601") or a.get("upload_time")
-        if ts:
-            try:
-                dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                return max((datetime.now(timezone.utc) - dt).total_seconds() / 86400.0, 0.0)
-            except ValueError:
-                return None
-    return None
-
-
-def _releases_last_7d(releases: dict) -> int:
-    now = datetime.now(timezone.utc)
-    recent = 0
-    for artifacts in releases.values():
-        for a in artifacts:
-            ts = a.get("upload_time_iso_8601") or a.get("upload_time")
-            if not ts:
-                continue
-            try:
-                dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                if (now - dt).total_seconds() <= 7 * 86400:
-                    recent += 1
-            except ValueError:
-                continue
-            break  # count each version once
-    return recent
+__all__ = ["RegistryFetcher", "choose_artifact", "choose_wheel"]
