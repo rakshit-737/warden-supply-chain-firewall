@@ -60,6 +60,37 @@ def test_score_uses_rules_when_model_absent(monkeypatch):
     assert result.ml_available is False
 
 
+def test_ml_inference_is_timed_only_when_a_model_is_available(monkeypatch):
+    from contextlib import contextmanager
+
+    from app.analysis import scoring
+
+    timed: list[str] = []
+
+    @contextmanager
+    def fake_time_ml():
+        timed.append("inference")
+        yield
+
+    class _Model:
+        def __init__(self, available: bool) -> None:
+            self.available = available
+
+        def predict(self, f):
+            return (40, 0.5) if self.available else (0, 0.0)
+
+    class _Ctx:
+        metadata = {}
+
+    monkeypatch.setattr(scoring.metrics, "time_ml", fake_time_ml)
+    monkeypatch.setattr(scoring, "get_model_store", lambda: _Model(False))
+    score([], _Ctx())
+    assert timed == []  # the rules-only fallback is not an inference
+    monkeypatch.setattr(scoring, "get_model_store", lambda: _Model(True))
+    result = score([], _Ctx())
+    assert timed == ["inference"] and result.ml_score == 40 and result.risk_score == 40
+
+
 def _result(risk, caps=None, name="pkg", signals=None):
     return AnalysisResult(
         ecosystem="pypi", name=name, version="1.0", rule_score=risk, ml_score=risk,

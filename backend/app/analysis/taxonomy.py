@@ -29,7 +29,8 @@ class Dimension:
     REPUTATION = "reputation"
     DEPENDENCY = "dependency"
     INTEGRITY = "integrity"
-    SECRET = "secret"
+    # bandit B105 false positive: a risk-dimension name, not a credential.
+    SECRET = "secret"  # nosec B105
     CONTAINER = "container"
     PIPELINE = "pipeline"
 

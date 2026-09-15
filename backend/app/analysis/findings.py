@@ -63,7 +63,8 @@ class Category(str, Enum):
     TYPOSQUAT = "typosquatting"
     DEPENDENCY_CONFUSION = "dependency_confusion"
     IOC = "ioc"
-    SECRET = "secret"
+    # bandit B105 false positive: a finding category name, not a credential.
+    SECRET = "secret"  # nosec B105
     VULNERABILITY = "vulnerability"
     PROVENANCE = "provenance"
     REPUTATION = "reputation"

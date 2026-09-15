@@ -1,6 +1,6 @@
 """Typosquatting analyzer.
 
-Detects package names that are suspiciously close to a popular package, using a
+Designed to flag package names that are suspiciously close to a popular package, using a
 combination of:
 
 * **PEP 503 canonicalisation** so ``python-dateutil`` vs ``python_dateutil`` style
@@ -13,7 +13,10 @@ combination of:
 
 A short edit distance to a popular name — while *not being* that popular name — is one of
 the strongest single indicators of a malicious upload. A homoglyph-only difference
-(distance 0 after folding) is treated as the most severe case.
+(distance 0 after folding) is treated as the most severe case. Comparison is limited to the
+bundled popular-package list, so squats of packages outside that list are not flagged.
+
+The finding describes the package *name*, so it has no source location.
 """
 
 from __future__ import annotations
@@ -22,11 +25,17 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-from app.analysis.analyzers.base import PackageContext
+from app.analysis.analyzers.base import BaseAnalyzer, PackageContext
 from app.analysis.signals import Capability, Code, Severity, Signal
+
+ANALYZER_VERSION = "1.1.0"
 
 _DATA = Path(__file__).resolve().parent.parent / "data" / "popular_packages.txt"
 _HOMOGLYPHS = str.maketrans({"0": "o", "1": "l", "3": "e", "4": "a", "5": "s", "7": "t", "$": "s"})
+
+# A homoglyph disguise is near-deterministic; larger edit distances collide more often with
+# legitimately similar names (e.g. plugin families), so confidence falls with distance.
+CONFIDENCE_BY_DISTANCE = {0: 0.9, 1: 0.8, 2: 0.6}
 
 
 def canonical(name: str) -> str:
@@ -74,8 +83,9 @@ def damerau_levenshtein(a: str, b: str, max_distance: int = 3) -> int:
     return d[la][lb]
 
 
-class TyposquatAnalyzer:
+class TyposquatAnalyzer(BaseAnalyzer):
     name = "typosquat"
+    version = ANALYZER_VERSION
 
     def analyze(self, ctx: PackageContext) -> list[Signal]:
         popular = _popular()  # {canonical: original}
@@ -106,6 +116,7 @@ class TyposquatAnalyzer:
                 {"target": best_target, "distance": 0, "kind": "homoglyph",
                  "candidate": ctx.name},
                 capability=Capability.TYPOSQUAT,
+                confidence=CONFIDENCE_BY_DISTANCE[0],
             )]
 
         severity = Severity.critical if best_distance == 1 else Severity.high
@@ -115,4 +126,5 @@ class TyposquatAnalyzer:
             f"Name is edit-distance {best_distance} from popular package '{best_target}'",
             {"target": best_target, "distance": best_distance, "candidate": ctx.name},
             capability=Capability.TYPOSQUAT,
+            confidence=CONFIDENCE_BY_DISTANCE[best_distance],
         )]

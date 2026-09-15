@@ -64,7 +64,8 @@ class Code:
     TYPOSQUAT = "TYPOSQUAT"
     IOC_MATCH = "IOC_MATCH"
     # --- secrets / external rule engines -----------------------------------------------
-    SECRET_DETECTED = "SECRET_DETECTED"
+    # bandit B105 false positives (here and DOCKERFILE_SECRET_IN_ENV): finding code names, not credentials.
+    SECRET_DETECTED = "SECRET_DETECTED"  # nosec B105
     YARA_MATCH = "YARA_MATCH"
     SEMGREP_FINDING = "SEMGREP_FINDING"
     # --- provenance / trust ------------------------------------------------------------
@@ -91,7 +92,7 @@ class Code:
     DOCKERFILE_ROOT_USER = "DOCKERFILE_ROOT_USER"
     DOCKERFILE_REMOTE_ADD = "DOCKERFILE_REMOTE_ADD"
     DOCKERFILE_CURL_PIPE_SHELL = "DOCKERFILE_CURL_PIPE_SHELL"
-    DOCKERFILE_SECRET_IN_ENV = "DOCKERFILE_SECRET_IN_ENV"
+    DOCKERFILE_SECRET_IN_ENV = "DOCKERFILE_SECRET_IN_ENV"  # nosec B105
     DOCKERFILE_UNPINNED_BASE = "DOCKERFILE_UNPINNED_BASE"
     COMPOSE_PRIVILEGED = "COMPOSE_PRIVILEGED"
     COMPOSE_DOCKER_SOCKET = "COMPOSE_DOCKER_SOCKET"
@@ -123,7 +124,8 @@ class Capability:
     PTH_HOOK = "pth_startup_hook"
     BUILD_HOOK = "build_backend_hook"
     NATIVE_CODE = "native_code"
-    SECRET = "secret"
+    # bandit B105 false positive: a capability tag, not a credential.
+    SECRET = "secret"  # nosec B105
     DEPENDENCY_CONFUSION = "dependency_confusion"
     KNOWN_EXPLOITED = "known_exploited_vulnerability"
 

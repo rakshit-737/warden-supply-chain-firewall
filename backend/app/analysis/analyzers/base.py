@@ -42,6 +42,9 @@ class InventoryEntry:
     mode: int | None = None  # permission bits from the archive header, if any
     retained: bool = False  # True when text is in ``files`` or bytes are in ``binaries``
     skipped_reason: str | None = None  # e.g. "too_large", "unsafe_path", "symlink"
+    # Additive (Warden X): member type claimed by archive metadata when it contradicts how installers
+    # treat the member (e.g. a zip entry with symlink mode bits that pip writes as a regular file).
+    declared_kind: str | None = None
 
 
 @dataclass
