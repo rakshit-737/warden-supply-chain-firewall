@@ -1,0 +1,13 @@
+{
+  "results": [
+    {
+      "vulns": [
+        {"id": "GHSA-fx01-fx01-fx01", "modified": "2099-01-05T10:00:00Z"},
+        {"id": "PYSEC-2099-1", "modified": "2099-01-06T10:00:00Z"},
+        {"id": "GHSA-fx02-fx02-fx02", "modified": "2099-02-01T00:00:00Z"},
+        {"id": "GHSA-fx03-fx03-fx03", "modified": "2099-01-07T00:00:00Z"}
+      ]
+    },
+    {}
+  ]
+}

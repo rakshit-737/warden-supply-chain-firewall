@@ -1,0 +1,48 @@
+{
+  "resultsPerPage": 1,
+  "startIndex": 0,
+  "totalResults": 1,
+  "format": "NVD_CVE",
+  "version": "2.0",
+  "timestamp": "2099-03-02T00:00:00.000",
+  "vulnerabilities": [
+    {
+      "cve": {
+        "id": "CVE-2099-0002",
+        "sourceIdentifier": "fixture@example.invalid",
+        "published": "2099-01-02T00:00:00.000",
+        "lastModified": "2099-01-06T00:00:00.000",
+        "vulnStatus": "Analyzed",
+        "descriptions": [{"lang": "en", "value": "Synthetic fixture description."}],
+        "metrics": {
+          "cvssMetricV31": [
+            {
+              "source": "secondary@example.invalid",
+              "type": "Secondary",
+              "cvssData": {
+                "version": "3.1",
+                "vectorString": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+                "baseScore": 7.8,
+                "baseSeverity": "HIGH"
+              },
+              "exploitabilityScore": 1.8,
+              "impactScore": 5.9
+            },
+            {
+              "source": "nvd@nist.gov",
+              "type": "Primary",
+              "cvssData": {
+                "version": "3.1",
+                "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+                "baseScore": 6.1,
+                "baseSeverity": "MEDIUM"
+              },
+              "exploitabilityScore": 2.8,
+              "impactScore": 2.7
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

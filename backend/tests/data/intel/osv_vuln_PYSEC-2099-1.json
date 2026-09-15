@@ -1,0 +1,17 @@
+{
+  "id": "PYSEC-2099-1",
+  "modified": "2099-01-06T10:00:00Z",
+  "published": "2099-01-02T00:00:00Z",
+  "aliases": ["CVE-2099-0002", "GHSA-fx04-fx04-fx04"],
+  "details": "Synthetic fixture: path traversal in archive helper.\nSecond line of synthetic details.",
+  "affected": [
+    {
+      "package": {"ecosystem": "PyPI", "name": "warden-fixture-pkg", "purl": "pkg:pypi/warden-fixture-pkg"},
+      "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0.5"}, {"last_affected": "1.0.0"}]}],
+      "versions": ["0.5", "1.0.0"]
+    }
+  ],
+  "references": [
+    {"type": "REPORT", "url": "https://example.invalid/pysec/PYSEC-2099-1"}
+  ]
+}

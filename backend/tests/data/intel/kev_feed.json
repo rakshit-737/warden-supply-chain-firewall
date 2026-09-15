@@ -1,0 +1,37 @@
+{
+  "title": "Synthetic fixture modelled on the CISA KEV feed (not the real catalog)",
+  "catalogVersion": "2099.03.01",
+  "dateReleased": "2099-03-01T12:00:00.0000Z",
+  "count": 5,
+  "vulnerabilities": [
+    {
+      "cveID": "CVE-2099-0001",
+      "vendorProject": "Fixture",
+      "product": "warden-fixture-pkg",
+      "vulnerabilityName": "Synthetic fixture remote code execution",
+      "dateAdded": "2099-03-01",
+      "shortDescription": "Synthetic fixture entry.",
+      "requiredAction": "Synthetic fixture action.",
+      "dueDate": "2099-03-22",
+      "knownRansomwareCampaignUse": "Unknown",
+      "notes": "https://example.invalid/kev/CVE-2099-0001",
+      "cwes": ["CWE-94"]
+    },
+    {
+      "cveID": "CVE-2099-0100",
+      "vendorProject": "Fixture",
+      "product": "other-fixture",
+      "vulnerabilityName": "Synthetic fixture entry two",
+      "dateAdded": "2099-02-15",
+      "shortDescription": "Synthetic fixture entry.",
+      "requiredAction": "Synthetic fixture action.",
+      "dueDate": "2099-03-08",
+      "knownRansomwareCampaignUse": "Known",
+      "notes": "",
+      "cwes": []
+    },
+    {"cveID": "not-a-cve", "dateAdded": "2099-01-01"},
+    {"cveID": "cve-2099-0200", "dateAdded": "garbage"},
+    "not an object"
+  ]
+}

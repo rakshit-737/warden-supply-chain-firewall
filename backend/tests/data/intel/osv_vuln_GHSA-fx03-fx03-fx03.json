@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.6.0",
+  "id": "GHSA-fx03-fx03-fx03",
+  "modified": "2099-01-07T00:00:00Z",
+  "published": "2099-01-04T00:00:00Z",
+  "aliases": ["CVE-2099-0003"],
+  "summary": "Synthetic fixture: denial of service via crafted header",
+  "severity": [
+    {"type": "CVSS_V4", "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N"}
+  ],
+  "affected": [
+    {
+      "package": {"ecosystem": "PyPI", "name": "warden-fixture-pkg"},
+      "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "1.0.0"}, {"fixed": "1.0.2"}]}]
+    }
+  ],
+  "references": [
+    {"type": "ADVISORY", "url": "https://example.invalid/advisory/GHSA-fx03-fx03-fx03"}
+  ],
+  "database_specific": {"severity": "MODERATE", "github_reviewed": true}
+}

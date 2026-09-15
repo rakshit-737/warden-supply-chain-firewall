@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.6.0",
+  "id": "GHSA-fx01-fx01-fx01",
+  "modified": "2099-01-05T10:00:00Z",
+  "published": "2099-01-01T00:00:00Z",
+  "aliases": ["CVE-2099-0001"],
+  "summary": "Synthetic fixture: remote code execution in warden-fixture-pkg",
+  "details": "Synthetic fixture. This is not a real advisory.",
+  "severity": [
+    {"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}
+  ],
+  "affected": [
+    {
+      "package": {"ecosystem": "PyPI", "name": "Warden_Fixture.Pkg", "purl": "pkg:pypi/warden-fixture-pkg"},
+      "ranges": [
+        {"type": "GIT", "repo": "https://example.invalid/fixture.git",
+         "events": [{"introduced": "0"}, {"fixed": "0123456789abcdef"}]},
+        {"type": "ECOSYSTEM",
+         "events": [{"introduced": "0"}, {"fixed": "1.0.5"}, {"introduced": "2.0.0"}, {"fixed": "2.0.3"}]}
+      ],
+      "versions": ["0.9.0", "1.0.0", "1.0.4", "2.0.0", "2.0.2"],
+      "database_specific": {"source": "https://example.invalid/fixture/source"}
+    },
+    {
+      "package": {"ecosystem": "PyPI", "name": "unrelated-fixture-lib"},
+      "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "9.9.9"}]}]
+    }
+  ],
+  "references": [
+    {"type": "WEB", "url": "https://example.invalid/web/1"},
+    {"type": "WEB", "url": "javascript:alert(1)"},
+    {"type": "PACKAGE", "url": "https://example.invalid/package"},
+    {"type": "FIX", "url": "https://example.invalid/fix/1"},
+    {"type": "WEB", "url": "https://example.invalid/web/2"},
+    {"type": "WEB", "url": "https://example.invalid/web/3"},
+    {"type": "WEB", "url": "https://example.invalid/web/4"},
+    {"type": "WEB", "url": "https://example.invalid/web/5"},
+    {"type": "WEB", "url": "https://example.invalid/web/6"},
+    {"type": "WEB", "url": "https://example.invalid/web/7"},
+    {"type": "WEB", "url": "https://example.invalid/web/8"},
+    {"type": "WEB", "url": "https://example.invalid/web/9"},
+    {"type": "ADVISORY", "url": "https://example.invalid/advisory/GHSA-fx01-fx01-fx01"}
+  ],
+  "database_specific": {"severity": "CRITICAL", "cwe_ids": ["CWE-94"], "github_reviewed": true}
+}
