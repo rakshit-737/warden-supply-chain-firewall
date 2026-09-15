@@ -1,113 +1,172 @@
-import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { api, apiErrorMessage } from "../api/client";
-import type { Scan } from "../api/types";
-import { DecisionBadge, Empty, RiskMeter, SeverityBadge, Spinner } from "../components/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams, useSearchParams } from "react-router";
+import { getScan } from "../api/scans";
+import type { AnalyzerRun, AttackChain, Finding, Scan, Severity, Vulnerability } from "../api/types";
+import { PERMISSIONS } from "../auth/permissions";
+import { usePermission } from "../auth/usePermission";
+import type { LinkedFinding } from "../components/AttackChainView";
+import { Card } from "../components/Card";
+import { DecisionBadge } from "../components/DecisionBadge";
+import { ErrorState } from "../components/ErrorState";
+import { PageHeader } from "../components/PageHeader";
+import { RiskGauge } from "../components/RiskGauge";
+import { SeverityBadge } from "../components/SeverityBadge";
+import { LoadingBlock } from "../components/Skeleton";
+import { Tabs, type TabItem } from "../components/Tabs";
+import { useApiQuery } from "../hooks/useApiQuery";
+import { findingAnchorId } from "../lib/findings";
+import { compareFindings } from "../lib/risk";
+import { isRecord, pickOption, recordArray, textOrNull } from "../lib/values";
+import {
+  AnalyzerRunsPanel,
+  AttackChainsPanel,
+  FindingsPanel,
+  PolicyOutcome,
+  ProvenancePanel,
+  ReportExport,
+  RiskPanel,
+  ScanMeta,
+  ScoresList,
+  VulnerabilitiesPanel,
+} from "./scan/panels";
 
-export default function ScanDetail() {
-  const { id } = useParams();
-  const [scan, setScan] = useState<Scan | null>(null);
-  const [error, setError] = useState<string | null>(null);
+const BACK = { to: "/scans", label: "Back to scans" };
+const TAB_IDS = ["findings", "risk", "chains", "vulnerabilities", "provenance", "analyzers"] as const;
 
+function ScanReport({ scan }: { scan: Scan }) {
+  const canExport = usePermission(PERMISSIONS.REPORT_READ);
+  // The open tab lives in the URL (?tab=) so a link can point straight at, say, a scan's vulnerabilities.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = pickOption(TAB_IDS, searchParams.get("tab")) ?? "findings";
+  const selectTab = useCallback(
+    (id: string) => {
+      setSearchParams(
+        (previous) => {
+          const next = new URLSearchParams(previous);
+          if (id === "findings") next.delete("tab");
+          else next.set("tab", id);
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+  const [severity, setSeverity] = useState<Severity | "all">("all");
+  const [focus, setFocus] = useState<{ id: string; seq: number } | null>(null);
+
+  const findings = useMemo(() => (recordArray<Finding>(scan.signals) ?? []).sort(compareFindings), [scan.signals]);
+  const linked = useMemo(() => {
+    const map = new Map<string, LinkedFinding>();
+    for (const finding of findings) {
+      const id = textOrNull(finding.finding_id);
+      if (id) map.set(id, { code: finding.code, title: finding.title });
+    }
+    return map;
+  }, [findings]);
+
+  // Bring a finding chosen from an attack chain or policy reason into view.
   useEffect(() => {
-    api
-      .get<Scan>(`/scans/${id}`)
-      .then((r) => setScan(r.data))
-      .catch((e) => setError(apiErrorMessage(e)));
-  }, [id]);
+    if (!focus || tab !== "findings") return;
+    const target = document.getElementById(findingAnchorId(focus.id));
+    if (!target) return;
+    if (typeof target.scrollIntoView === "function") target.scrollIntoView({ block: "start" });
+    target.focus({ preventScroll: true });
+  }, [focus, tab]);
 
-  if (error) return <Empty text={error} />;
-  if (!scan) return <Spinner />;
+  function showFinding(findingId: string) {
+    selectTab("findings");
+    setSeverity("all");
+    setFocus((previous) => ({ id: findingId, seq: (previous?.seq ?? 0) + 1 }));
+  }
 
-  const features = Object.entries(scan.feature_vector)
-    .filter(([, v]) => v > 0)
-    .sort((a, b) => b[1] - a[1]);
+  const chains = recordArray<AttackChain>(scan.attack_chains);
+  const vulnerabilities = recordArray<Vulnerability>(scan.vulnerabilities);
+  const runs = recordArray<AnalyzerRun>(scan.analyzer_runs);
+  const provenance = isRecord(scan.provenance) ? scan.provenance : null;
+  const intel = isRecord(scan.intel_status) ? scan.intel_status : null;
+  const predatesWardenX =
+    !isRecord(scan.risk) && chains === null && vulnerabilities === null && runs === null && provenance === null;
+
+  const tabs: TabItem[] = [
+    {
+      id: "findings",
+      label: "Findings",
+      count: findings.length,
+      content: <FindingsPanel findings={findings} severity={severity} onSeverityChange={setSeverity} />,
+    },
+    { id: "risk", label: "Risk breakdown", content: <RiskPanel scan={scan} /> },
+    {
+      id: "chains",
+      label: "Attack chains",
+      count: chains?.length,
+      content: <AttackChainsPanel chains={chains} findings={linked} onFindingClick={showFinding} />,
+    },
+    {
+      id: "vulnerabilities",
+      label: "Vulnerabilities",
+      count: vulnerabilities?.length,
+      content: <VulnerabilitiesPanel vulnerabilities={vulnerabilities} intel={intel} />,
+    },
+    { id: "provenance", label: "Provenance", content: <ProvenancePanel provenance={provenance} /> },
+    { id: "analyzers", label: "Analyzer runs", count: runs?.length, content: <AnalyzerRunsPanel runs={runs} /> },
+  ];
 
   return (
-    <div className="space-y-6">
-      <Link to="/scans" className="text-sm text-muted hover:text-accent">← Back to history</Link>
-
-      <div className="card p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="font-mono text-xl">
-              {scan.package_name}
-              <span className="text-muted">=={scan.version}</span>
-            </div>
-            <div className="mt-2 flex items-center gap-2">
-              <DecisionBadge value={scan.decision} />
-              <SeverityBadge value={scan.severity} />
-              <span className="text-xs text-muted">analyzer v{scan.analyzer_version} · {scan.duration_ms} ms</span>
-            </div>
-          </div>
-          <RiskMeter score={scan.risk_score} />
-        </div>
-        <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
-          <div className="rounded-lg bg-panel2 p-3"><div className="text-xs text-muted">Rule</div><div className="text-lg">{scan.rule_score}</div></div>
-          <div className="rounded-lg bg-panel2 p-3"><div className="text-xs text-muted">ML</div><div className="text-lg">{scan.ml_score}</div></div>
-          <div className="rounded-lg bg-panel2 p-3"><div className="text-xs text-muted">Fused</div><div className="text-lg">{scan.risk_score}</div></div>
-        </div>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-        <div className="card p-5">
-          <h2 className="mb-3 text-sm font-semibold text-slate-200">Signals ({scan.signals.length})</h2>
-          {scan.signals.length === 0 ? (
-            <Empty text="No risk signals — package looks clean." />
-          ) : (
-            <ul className="space-y-3">
-              {[...scan.signals]
-                .sort((a, b) => b.weight - a.weight)
-                .map((s, i) => (
-                  <li key={i} className="rounded-lg border border-edge bg-panel2/50 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono text-xs text-slate-200">{s.code}</span>
-                      <div className="flex items-center gap-2">
-                        <SeverityBadge value={s.severity} />
-                        <span className="text-xs text-muted">w={s.weight}</span>
-                      </div>
-                    </div>
-                    <p className="mt-1 text-sm text-slate-300">{s.message}</p>
-                    {Object.keys(s.evidence || {}).length > 0 && (
-                      <pre className="mt-2 overflow-x-auto rounded bg-base/60 p-2 text-[11px] text-muted">
-                        {JSON.stringify(s.evidence, null, 2)}
-                      </pre>
-                    )}
-                  </li>
-                ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="card p-5">
-          <h2 className="mb-3 text-sm font-semibold text-slate-200">ML feature contributions</h2>
-          {features.length === 0 ? (
-            <Empty text="No active features." />
-          ) : (
-            <ul className="space-y-2">
-              {features.map(([name, value]) => (
-                <li key={name} className="flex items-center gap-3">
-                  <span className="w-40 truncate font-mono text-xs text-slate-300">{name}</span>
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-panel2">
-                    <div className="h-full bg-accent" style={{ width: `${Math.min(100, value * 100)}%` }} />
-                  </div>
-                  <span className="w-10 text-right text-xs tabular-nums text-muted">{value.toFixed(2)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {scan.matched_policy_rules.length > 0 && (
-            <div className="mt-5">
-              <div className="label">Matched policy rules</div>
-              <div className="flex flex-wrap gap-2">
-                {scan.matched_policy_rules.map((r) => (
-                  <span key={r} className="rounded-md bg-panel2 px-2 py-1 font-mono text-xs text-slate-300">{r}</span>
-                ))}
+    <>
+      <PageHeader
+        title={`${scan.package_name} ${scan.version}`}
+        heading={
+          <span className="break-all font-mono text-xl font-medium sm:text-2xl">
+            {scan.package_name}
+            <span className="text-ink-muted">=={scan.version}</span>
+          </span>
+        }
+        back={BACK}
+        meta={<ScanMeta scan={scan} />}
+        actions={canExport ? <ReportExport scan={scan} /> : undefined}
+      />
+      <div className="flex flex-col gap-4">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,4fr)]">
+          <Card title="Verdict">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                <DecisionBadge value={scan.decision} size="lg" />
+                <SeverityBadge value={scan.severity} />
               </div>
+              <RiskGauge score={scan.risk_score} size="lg" label="Final risk score" />
+              <PolicyOutcome scan={scan} findings={linked} onFindingClick={showFinding} />
             </div>
-          )}
+          </Card>
+          <Card title="Scores">
+            <ScoresList scan={scan} />
+          </Card>
         </div>
+        {predatesWardenX && (
+          <p className="rounded-r-md border-l-2 border-line-strong bg-panel px-4 py-2.5 text-ink-secondary">
+            This scan was recorded without Warden X analysis data, so risk dimensions, attack chains, vulnerability
+            intelligence, provenance and analyzer runs are not available for it.
+          </p>
+        )}
+        <Tabs label="Scan details" tabs={tabs} value={tab} onChange={selectTab} />
       </div>
-    </div>
+    </>
+  );
+}
+
+export default function ScanDetail() {
+  const { id = "" } = useParams();
+  const query = useApiQuery(id ? `scan:${id}` : null, (signal) => getScan(id, { signal }));
+
+  if (query.data) return <ScanReport key={query.data.id} scan={query.data} />;
+  return (
+    <>
+      <PageHeader title="Scan" back={BACK} />
+      {query.error ? (
+        <ErrorState error={query.error} onRetry={query.reload} title="This scan could not be loaded" />
+      ) : (
+        <LoadingBlock label="Loading scan" rows={8} />
+      )}
+    </>
   );
 }

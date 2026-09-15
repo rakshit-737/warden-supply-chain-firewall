@@ -1,107 +1,224 @@
-import { FormEvent, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { api, apiErrorMessage } from "../api/client";
-import type { Scan } from "../api/types";
-import { DecisionBadge, RiskMeter, SeverityBadge } from "../components/ui";
+import { useState, type FormEvent } from "react";
+import { Link } from "react-router";
+import { CLIENT_TIMEOUT_CODE, toApiError, type ApiError } from "../api/client";
+import { createScan } from "../api/scans";
+import { ENVIRONMENTS, type Environment, type Scan } from "../api/types";
+import { PERMISSIONS } from "../auth/permissions";
+import { usePermission } from "../auth/usePermission";
+import { Card } from "../components/Card";
+import { DecisionBadge } from "../components/DecisionBadge";
+import { EmptyState } from "../components/EmptyState";
+import { ErrorState } from "../components/ErrorState";
+import { KeyValueList } from "../components/KeyValueList";
+import { PageHeader } from "../components/PageHeader";
+import { RiskGauge } from "../components/RiskGauge";
+import { SelectField } from "../components/SelectField";
+import { SeverityBadge } from "../components/SeverityBadge";
+import { formatDuration, humanize } from "../lib/format";
+import { mlModelUsed } from "../lib/scan";
+import { numberOrNull, pickOption, stringArray } from "../lib/values";
+
+const BACK = { to: "/scans", label: "Back to scans" };
+
+/**
+ * The console (client timeout) or the web server (504) stopped waiting. The scan request itself was
+ * accepted, so the server may still finish the analysis and record it.
+ */
+function isAbandonedWait(error: ApiError): boolean {
+  return error.code === CLIENT_TIMEOUT_CODE || error.status === 504;
+}
+
+function ScanResult({ scan }: { scan: Scan }) {
+  const rules = stringArray(scan.matched_policy_rules);
+  const modelUsed = mlModelUsed(scan);
+  return (
+    <Card
+      title={
+        <span className="break-all font-mono">
+          {scan.package_name}
+          <span className="text-ink-muted">=={scan.version}</span>
+        </span>
+      }
+      description="Scan complete"
+      actions={
+        <Link to={`/scans/${encodeURIComponent(scan.id)}`} className="btn-primary">
+          Open scan details
+        </Link>
+      }
+    >
+      <div className="grid gap-5 md:grid-cols-2">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-4">
+            <DecisionBadge value={scan.decision} size="lg" />
+            <SeverityBadge value={scan.severity} />
+          </div>
+          <RiskGauge score={scan.risk_score} size="lg" label="Final risk score" />
+        </div>
+        <KeyValueList
+          items={[
+            { term: "Rule score", value: numberOrNull(scan.rule_score) },
+            // The server records 0 when no model ran; do not present that as a score.
+            { term: "ML score", value: modelUsed === false ? "Model not available" : numberOrNull(scan.ml_score) },
+            { term: "Findings", value: Array.isArray(scan.signals) ? scan.signals.length : null },
+            { term: "Duration", value: formatDuration(scan.duration_ms) },
+            {
+              term: "Matched policy rules",
+              value:
+                rules.length > 0 ? (
+                  <span className="flex flex-wrap gap-1.5">
+                    {rules.map((rule) => (
+                      <code key={rule} className="break-all rounded bg-raised px-1.5 py-0.5 font-mono text-2xs">
+                        {rule}
+                      </code>
+                    ))}
+                  </span>
+                ) : (
+                  "None"
+                ),
+            },
+          ]}
+        />
+      </div>
+    </Card>
+  );
+}
 
 export default function NewScan() {
-  const nav = useNavigate();
+  const canScan = usePermission(PERMISSIONS.SCAN_CREATE);
   const [name, setName] = useState("");
   const [version, setVersion] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [environment, setEnvironment] = useState<Environment>("production");
+  const [pending, setPending] = useState<string | null>(null);
+  const [submittedName, setSubmittedName] = useState("");
+  const [error, setError] = useState<ApiError | null>(null);
   const [result, setResult] = useState<Scan | null>(null);
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
+  if (!canScan) {
+    return (
+      <>
+        <PageHeader title="New scan" back={BACK} />
+        <EmptyState
+          title="Your role can review scans but not start them."
+          description="Starting a scan needs the scan:create permission, held by the admin, security analyst and developer roles."
+          action={
+            <Link to="/scans" className="btn-secondary">
+              View scans
+            </Link>
+          }
+        />
+      </>
+    );
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const packageName = name.trim();
+    if (!packageName || pending !== null) return;
+    const requestedVersion = version.trim();
+    setPending(requestedVersion ? `${packageName}==${requestedVersion}` : packageName);
+    setSubmittedName(packageName);
     setError(null);
     setResult(null);
     try {
-      const resp = await api.post<Scan>("/scans", {
-        ecosystem: "pypi",
-        name: name.trim(),
-        version: version.trim() || null,
-      });
-      setResult(resp.data);
+      setResult(await createScan({ name: packageName, version: requestedVersion || null, environment }));
     } catch (err) {
-      setError(apiErrorMessage(err));
+      setError(toApiError(err));
     } finally {
-      setBusy(false);
+      setPending(null);
     }
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Analyse a package</h1>
-        <p className="text-sm text-muted">Warden fetches the real artifact from PyPI and evaluates it against the active policy.</p>
-      </div>
-
-      <form onSubmit={onSubmit} className="card grid gap-4 p-5 sm:grid-cols-[1fr_200px_auto] sm:items-end">
-        <div>
-          <label className="label">Package name</label>
-          <input className="input" placeholder="e.g. requests" value={name} onChange={(e) => setName(e.target.value)} required />
-        </div>
-        <div>
-          <label className="label">Version (optional)</label>
-          <input className="input" placeholder="latest" value={version} onChange={(e) => setVersion(e.target.value)} />
-        </div>
-        <button className="btn-primary h-[38px]" disabled={busy || !name.trim()}>
-          {busy ? "Scanning…" : "Scan"}
-        </button>
-      </form>
-
-      {error && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</div>}
-
-      {result && (
-        <div className="card p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+    <>
+      <PageHeader
+        title="New scan"
+        back={BACK}
+        description="Analyse one PyPI release and evaluate it against the active policy of an environment."
+      />
+      <div className="flex flex-col gap-4">
+        <Card title="Package">
+          <form
+            onSubmit={(event) => void submit(event)}
+            className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_12rem_12rem_auto] lg:items-end"
+          >
             <div>
-              <div className="font-mono text-lg">
-                {result.package_name}
-                <span className="text-muted">=={result.version}</span>
-              </div>
-              <div className="mt-1 flex items-center gap-2">
-                <DecisionBadge value={result.decision} />
-                <SeverityBadge value={result.severity} />
-                <span className="text-xs text-muted">{result.duration_ms} ms</span>
-              </div>
+              <label htmlFor="scan-name" className="label">
+                Package name
+              </label>
+              <input
+                id="scan-name"
+                className="input font-mono"
+                required
+                maxLength={214}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="requests"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
             </div>
-            <RiskMeter score={result.risk_score} />
+            <div>
+              <label htmlFor="scan-version" className="label">
+                Version
+              </label>
+              <input
+                id="scan-version"
+                className="input font-mono"
+                maxLength={64}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="Latest release"
+                value={version}
+                onChange={(event) => setVersion(event.target.value)}
+              />
+            </div>
+            <SelectField
+              id="scan-environment"
+              label="Policy environment"
+              value={environment}
+              options={ENVIRONMENTS.map((env) => ({ value: env, label: humanize(env) }))}
+              onChange={(value) => setEnvironment(pickOption(ENVIRONMENTS, value) ?? "production")}
+            />
+            <button type="submit" className="btn-primary" disabled={pending !== null || name.trim() === ""}>
+              {pending !== null ? "Scanning" : "Start scan"}
+            </button>
+          </form>
+          <p className="mt-3 text-xs text-ink-muted">
+            Warden downloads the release from PyPI and inspects it without installing or running it.
+          </p>
+        </Card>
+
+        {pending !== null && (
+          <div role="status" className="flex items-center gap-3 rounded-md border border-line bg-panel px-4 py-3">
+            <span
+              aria-hidden="true"
+              className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-line-strong border-t-accent"
+            />
+            <span>
+              Analysing <code className="break-all font-mono">{pending}</code>. Large releases can take a few minutes.
+            </span>
           </div>
-
-          <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
-            <div className="rounded-lg bg-panel2 p-3">
-              <div className="text-xs text-muted">Rule score</div>
-              <div className="text-lg">{result.rule_score}</div>
+        )}
+        {error &&
+          (isAbandonedWait(error) ? (
+            <div className="flex flex-col items-start gap-2">
+              <ErrorState
+                title="The scan result did not arrive in time"
+                error={{
+                  ...error,
+                  message:
+                    "Warden stopped waiting, but the server may still finish this scan and record it. Look for it in the scan list before starting the same scan again.",
+                }}
+              />
+              <Link to={`/scans?q=${encodeURIComponent(submittedName)}`} className="btn-secondary">
+                Check Scans for {submittedName}
+              </Link>
             </div>
-            <div className="rounded-lg bg-panel2 p-3">
-              <div className="text-xs text-muted">ML score</div>
-              <div className="text-lg">{result.ml_score}</div>
-            </div>
-            <div className="rounded-lg bg-panel2 p-3">
-              <div className="text-xs text-muted">Fused risk</div>
-              <div className="text-lg">{result.risk_score}</div>
-            </div>
-          </div>
-
-          {result.matched_policy_rules.length > 0 && (
-            <div className="mt-4">
-              <div className="label">Matched policy rules</div>
-              <div className="flex flex-wrap gap-2">
-                {result.matched_policy_rules.map((r) => (
-                  <span key={r} className="rounded-md bg-panel2 px-2 py-1 font-mono text-xs text-slate-300">{r}</span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <button className="btn-ghost mt-5" onClick={() => nav(`/scans/${result.id}`)}>
-            View full signal breakdown →
-          </button>
-        </div>
-      )}
-    </div>
+          ) : (
+            <ErrorState error={error} title="The scan did not complete" />
+          ))}
+        {result && <ScanResult scan={result} />}
+      </div>
+    </>
   );
 }

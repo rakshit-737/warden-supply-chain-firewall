@@ -1,110 +1,196 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { api, apiErrorMessage } from "../api/client";
-import type { Decision, Page, ScanSummary } from "../api/types";
-import { DecisionBadge, Empty, RiskMeter, SeverityBadge, Spinner } from "../components/ui";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router";
+import { listScans } from "../api/scans";
+import { DECISIONS, ENVIRONMENTS, SEVERITIES, type ListScansParams } from "../api/types";
+import { PERMISSIONS } from "../auth/permissions";
+import { usePermission } from "../auth/usePermission";
+import { Card } from "../components/Card";
+import { DataTable } from "../components/DataTable";
+import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
+import { SelectField } from "../components/SelectField";
+import { useApiQuery } from "../hooks/useApiQuery";
+import { humanize } from "../lib/format";
+import { DECISION_LABEL, SEVERITY_LABEL } from "../lib/risk";
+import { pickOption } from "../lib/values";
+import { scanSummaryColumns } from "./scanColumns";
 
-const PAGE = 20;
+const PAGE_SIZE = 25;
+const COLUMNS = scanSummaryColumns({ showEnvironment: true });
+
+function parseOffset(value: string | null): number {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : 0;
+}
 
 export default function Scans() {
-  const [data, setData] = useState<Page<ScanSummary> | null>(null);
-  const [q, setQ] = useState("");
-  const [decision, setDecision] = useState<Decision | "">("");
-  const [offset, setOffset] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const canScan = usePermission(PERMISSIONS.SCAN_CREATE);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const q = searchParams.get("q") ?? "";
+  const decision = pickOption(DECISIONS, searchParams.get("decision"));
+  const severity = pickOption(SEVERITIES, searchParams.get("severity"));
+  const environment = pickOption(ENVIRONMENTS, searchParams.get("environment"));
+  const offset = parseOffset(searchParams.get("offset"));
 
+  // The text box follows the URL unless the user has typed since the URL last changed.
+  const [typed, setTyped] = useState({ basedOn: q, value: q });
+  const searchText = typed.basedOn === q ? typed.value : q;
+
+  const updateParams = useCallback(
+    (changes: Record<string, string | null>) => {
+      setSearchParams(
+        (previous) => {
+          const next = new URLSearchParams(previous);
+          for (const [name, value] of Object.entries(changes)) {
+            if (value === null || value === "") next.delete(name);
+            else next.set(name, value);
+          }
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  // Apply typed text to the URL after a short pause.
   useEffect(() => {
-    const params: Record<string, string | number> = { limit: PAGE, offset };
-    if (q) params.q = q;
-    if (decision) params.decision = decision;
-    api
-      .get<Page<ScanSummary>>("/scans", { params })
-      .then((r) => setData(r.data))
-      .catch((e) => setError(apiErrorMessage(e)));
-  }, [q, decision, offset]);
+    if (typed.basedOn !== q || typed.value === q) return;
+    const timer = window.setTimeout(() => updateParams({ q: typed.value, offset: null }), 300);
+    return () => window.clearTimeout(timer);
+  }, [typed, q, updateParams]);
+
+  const params: ListScansParams = {
+    limit: PAGE_SIZE,
+    offset,
+    q: q.trim() || undefined,
+    decision,
+    severity,
+    environment,
+  };
+  const query = useApiQuery(`scans:${JSON.stringify(params)}`, (signal) => listScans(params, { signal }));
+  const page = query.data ?? query.previousData;
+  const filtered = Boolean(q.trim() || decision || severity || environment);
+
+  // An offset beyond the last scan (an old bookmark or shared link, or scans removed since) returns no
+  // rows although scans exist. Move to the last page rather than showing an empty list.
+  const current = query.data;
+  const pastEnd = current !== undefined && current.total > 0 && current.items.length === 0 && offset > 0;
+  const lastPageOffset = current ? Math.floor(Math.max(current.total - 1, 0) / (current.limit || PAGE_SIZE)) * (current.limit || PAGE_SIZE) : 0;
+  useEffect(() => {
+    if (!pastEnd || lastPageOffset === offset) return;
+    updateParams({ offset: lastPageOffset > 0 ? String(lastPageOffset) : null });
+  }, [pastEnd, lastPageOffset, offset, updateParams]);
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Scan history</h1>
+    <>
+      <PageHeader
+        title="Scans"
+        description="Every package analysis recorded by this deployment, newest first."
+        actions={
+          canScan ? (
+            <Link to="/scans/new" className="btn-primary">
+              New scan
+            </Link>
+          ) : undefined
+        }
+      />
 
-      <div className="flex flex-wrap gap-3">
-        <input
-          className="input max-w-xs"
-          placeholder="Search package…"
-          value={q}
-          onChange={(e) => {
-            setOffset(0);
-            setQ(e.target.value);
-          }}
+      <div role="search" aria-label="Filter scans" className="mb-3 flex flex-wrap items-end gap-3">
+        <div className="w-full sm:w-64">
+          <label htmlFor="scan-filter-q" className="label">
+            Package name
+          </label>
+          <input
+            id="scan-filter-q"
+            type="search"
+            className="input"
+            placeholder="Contains"
+            maxLength={214}
+            spellCheck={false}
+            value={searchText}
+            onChange={(event) => setTyped({ basedOn: q, value: event.target.value })}
+          />
+        </div>
+        <SelectField
+          id="scan-filter-decision"
+          label="Decision"
+          className="w-32"
+          value={decision ?? ""}
+          options={[{ value: "", label: "Any" }, ...DECISIONS.map((d) => ({ value: d, label: DECISION_LABEL[d] }))]}
+          onChange={(value) => updateParams({ decision: value, offset: null })}
         />
-        <select
-          className="input max-w-[160px]"
-          value={decision}
-          onChange={(e) => {
-            setOffset(0);
-            setDecision(e.target.value as Decision | "");
-          }}
-        >
-          <option value="">All decisions</option>
-          <option value="allow">Allow</option>
-          <option value="warn">Warn</option>
-          <option value="block">Block</option>
-        </select>
+        <SelectField
+          id="scan-filter-severity"
+          label="Severity"
+          className="w-32"
+          value={severity ?? ""}
+          options={[{ value: "", label: "Any" }, ...SEVERITIES.map((s) => ({ value: s, label: SEVERITY_LABEL[s] }))]}
+          onChange={(value) => updateParams({ severity: value, offset: null })}
+        />
+        <SelectField
+          id="scan-filter-environment"
+          label="Environment"
+          className="w-36"
+          value={environment ?? ""}
+          options={[{ value: "", label: "Any" }, ...ENVIRONMENTS.map((e) => ({ value: e, label: humanize(e) }))]}
+          onChange={(value) => updateParams({ environment: value, offset: null })}
+        />
+        {filtered && (
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={() => {
+              setTyped({ basedOn: "", value: "" });
+              updateParams({ q: null, decision: null, severity: null, environment: null, offset: null });
+            }}
+          >
+            Clear filters
+          </button>
+        )}
       </div>
 
-      {error ? (
-        <Empty text={error} />
-      ) : !data ? (
-        <Spinner />
-      ) : data.items.length === 0 ? (
-        <Empty text="No scans match." />
-      ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="border-b border-edge text-left text-xs uppercase tracking-wide text-muted">
-              <tr>
-                <th className="px-4 py-3">Package</th>
-                <th className="px-4 py-3">Risk</th>
-                <th className="px-4 py-3">Severity</th>
-                <th className="px-4 py-3">Decision</th>
-                <th className="px-4 py-3">When</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.items.map((s) => (
-                <tr key={s.id} className="border-b border-edge/50 hover:bg-panel2/50">
-                  <td className="px-4 py-3">
-                    <Link to={`/scans/${s.id}`} className="font-mono text-slate-200 hover:text-accent">
-                      {s.package_name}
-                      <span className="text-muted">=={s.version}</span>
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3"><RiskMeter score={s.risk_score} /></td>
-                  <td className="px-4 py-3"><SeverityBadge value={s.severity} /></td>
-                  <td className="px-4 py-3"><DecisionBadge value={s.decision} /></td>
-                  <td className="px-4 py-3 text-muted">{new Date(s.created_at).toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {data && data.total > PAGE && (
-        <div className="flex items-center justify-between text-sm text-muted">
-          <span>
-            {offset + 1}–{Math.min(offset + PAGE, data.total)} of {data.total}
-          </span>
-          <div className="flex gap-2">
-            <button className="btn-ghost" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE))}>
-              Prev
-            </button>
-            <button className="btn-ghost" disabled={offset + PAGE >= data.total} onClick={() => setOffset(offset + PAGE)}>
-              Next
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
+      <Card flush>
+        <DataTable
+          caption="Scans"
+          columns={COLUMNS}
+          rows={page?.items}
+          rowKey={(scan) => scan.id}
+          loading={query.loading}
+          error={query.error}
+          onRetry={query.reload}
+          empty={
+            pastEnd ? (
+              <EmptyState
+                compact
+                title="This page is past the end of the list."
+                action={
+                  <button type="button" className="btn-secondary" onClick={() => updateParams({ offset: null })}>
+                    Go to the first page
+                  </button>
+                }
+              />
+            ) : (
+              <EmptyState
+                compact
+                title={filtered ? "No scans match these filters." : "No scans yet."}
+                description={filtered ? "Change or clear the filters." : canScan ? "Start one with New scan." : undefined}
+              />
+            )
+          }
+          pagination={
+            page && page.total > 0
+              ? {
+                  total: page.total,
+                  limit: page.limit || PAGE_SIZE,
+                  offset: page.offset,
+                  onOffsetChange: (next) => updateParams({ offset: next > 0 ? String(next) : null }),
+                }
+              : undefined
+          }
+          footnote="Sorting a column reorders this page only."
+        />
+      </Card>
+    </>
   );
 }
