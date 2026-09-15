@@ -26,6 +26,14 @@ backend/ml/dataset.csv
 node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/*.tsbuildinfo
+frontend/vite.config.d.ts
+frontend/vite.config.js
+frontend/coverage/
+
+# Local analysis / benchmark outputs
+backend/benchmark/results/*.tmp
+warden-results.sarif
 
 # OS / editors
 .DS_Store

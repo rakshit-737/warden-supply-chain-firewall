@@ -14,7 +14,23 @@ from app.api.middleware import (
     RequestContextMiddleware,
     SecurityHeadersMiddleware,
 )
-from app.api.routers import audit, auth, health, policies, scans
+from app.api.routers import (
+    audit,
+    auth,
+    containers,
+    diffs,
+    events,
+    health,
+    ml,
+    monitoring,
+    packages,
+    policies,
+    projects,
+    scans,
+    system,
+    users,
+    vulnerabilities,
+)
 from app.core.config import settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
@@ -68,11 +84,11 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
 
     p = settings.API_V1_PREFIX
-    app.include_router(health.router, prefix=p)
-    app.include_router(auth.router, prefix=p)
-    app.include_router(scans.router, prefix=p)
-    app.include_router(policies.router, prefix=p)
-    app.include_router(audit.router, prefix=p)
+    for module in (
+        health, auth, users, scans, packages, diffs, projects, vulnerabilities,
+        policies, events, audit, monitoring, containers, system, ml,
+    ):
+        app.include_router(module.router, prefix=p)
 
     @app.get("/", tags=["meta"])
     def root() -> dict:

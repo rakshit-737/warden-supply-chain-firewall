@@ -1,18 +1,26 @@
 # Runtime dependencies (pinned for reproducible builds).
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-pydantic==2.10.4
-pydantic-settings==2.7.1
-email-validator==2.2.0
-SQLAlchemy==2.0.36
-alembic==1.14.0
-psycopg[binary]==3.2.3
-PyJWT==2.10.1
-argon2-cffi==23.1.0
-redis==5.2.1
+# Security: pins are audited with pip-audit in CI; v1 pins of starlette (via fastapi),
+# PyJWT and python-multipart carried published advisories and were upgraded for Warden X.
+fastapi==0.141.1
+starlette==1.6.0
+uvicorn[standard]==0.53.0
+pydantic==2.13.5
+pydantic-settings==2.15.0
+email-validator==2.3.0
+SQLAlchemy==2.0.53
+alembic==1.20.0
+psycopg[binary]==3.3.5
+PyJWT==2.14.0
+argon2-cffi==25.1.0
+redis==8.1.0
 httpx==0.28.1
-structlog==24.4.0
-scikit-learn==1.6.0
-joblib==1.4.2
-numpy==2.2.1
-python-multipart==0.0.20
+structlog==26.1.0
+scikit-learn==1.9.1
+joblib==1.6.0
+numpy==2.5.3
+python-multipart==0.0.32
+# Warden X additions — each is a mature, widely-used, permissively-licensed library:
+packaging==26.3          # PyPA reference implementation of PEP 440/508 (versions, specifiers, markers)
+PyYAML==6.0.3            # policy-as-code documents (safe_load only)
+networkx==3.6.1          # dependency-graph metrics (dominators, centrality)
+prometheus-client==0.26.0  # /metrics exposition

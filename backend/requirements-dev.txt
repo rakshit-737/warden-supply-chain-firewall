@@ -1,9 +1,11 @@
 -r requirements.txt
 # Development, testing, and security tooling.
-pytest==8.3.4
-pytest-cov==6.0.0
-ruff==0.8.4
-mypy==1.14.0
-bandit==1.8.0
-pip-audit==2.7.3
-respx==0.22.0
+pytest==9.1.1
+pytest-cov==7.1.0
+ruff==0.16.7
+mypy==2.3.1
+bandit==1.9.4
+pip-audit==2.10.1
+respx==0.23.1
+jsonschema==4.26.0     # validates generated CycloneDX / SPDX / SARIF against official schemas in tests
+hypothesis==6.168.0    # property-based tests for parsers and hostile-input handling

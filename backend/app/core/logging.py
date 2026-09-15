@@ -13,6 +13,8 @@ from contextvars import ContextVar
 
 import structlog
 
+from app.core.redaction import structlog_redactor
+
 request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
 
 
@@ -35,6 +37,8 @@ def configure_logging(debug: bool = False) -> None:
             structlog.processors.TimeStamper(fmt="iso", utc=True),
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
+            # Last line of defence: no secret-shaped value leaves the process in a log line.
+            structlog_redactor,
             structlog.processors.JSONRenderer(),
         ],
         wrapper_class=structlog.make_filtering_bound_logger(level),
