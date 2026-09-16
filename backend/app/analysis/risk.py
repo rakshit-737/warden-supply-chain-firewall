@@ -119,6 +119,7 @@ DIMENSION_ANALYZERS: dict[str, frozenset[str]] = {
     Dimension.PROVENANCE: frozenset({"provenance"}),
     Dimension.DEPENDENCY: frozenset({"dependency_confusion"}),
     Dimension.INTEGRITY: frozenset({"inventory"}),
+    Dimension.SECRET: frozenset({"secrets"}),
 }
 _OK_INTEL = "ok"
 # Source name of the CISA KEV feed in ``intel_status["sources"]`` (app.intel.models.SOURCE_KEV).

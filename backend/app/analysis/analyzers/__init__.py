@@ -22,14 +22,19 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from app.analysis.analyzers.base import Analyzer, BaseAnalyzer, PackageContext
+from app.analysis.analyzers.dependency_confusion import DependencyConfusionAnalyzer
 from app.analysis.analyzers.install_script import InstallScriptAnalyzer
 from app.analysis.analyzers.inventory import InventoryAnalyzer
 from app.analysis.analyzers.ioc import IOCAnalyzer
 from app.analysis.analyzers.metadata import MetadataAnalyzer
 from app.analysis.analyzers.obfuscation import ObfuscationAnalyzer
+from app.analysis.analyzers.provenance import ProvenanceAnalyzer
+from app.analysis.analyzers.secrets import SecretsAnalyzer
+from app.analysis.analyzers.semgrep_scan import SemgrepAnalyzer
 from app.analysis.analyzers.static_code import StaticCodeAnalyzer
 from app.analysis.analyzers.typosquat import TyposquatAnalyzer
 from app.analysis.analyzers.vulnerability import VulnerabilityAnalyzer
+from app.analysis.analyzers.yara_scan import YaraScanAnalyzer
 from app.core.logging import get_logger
 
 log = get_logger("warden.analyzers")
@@ -46,6 +51,13 @@ ALL_ANALYZERS: list[Analyzer] = [
     # Warden X analyzers. Names must match app.analysis.risk.DIMENSION_ANALYZERS /
     # VULNERABILITY_ANALYZER_NAMES so their dimensions read as "examined" when they ran.
     InventoryAnalyzer(),
+    SecretsAnalyzer(),
+    DependencyConfusionAnalyzer(),
+    ProvenanceAnalyzer(),
+    # Optional external-tool layers: they report themselves unavailable (and the orchestrator
+    # records TOOL_UNAVAILABLE) when the tool is not installed, rather than silently finding nothing.
+    YaraScanAnalyzer(),
+    SemgrepAnalyzer(),
     VulnerabilityAnalyzer(),
 ]
 

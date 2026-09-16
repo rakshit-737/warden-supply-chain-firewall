@@ -48,7 +48,7 @@ Other findings
   ``_age_days`` metadata, so it works offline. Mature libraries also release after long pauses: medium,
   weight 4, confidence 0.5.
 * ``MAINTAINER_CHANGED`` — network only. The analysed release's identity metadata is compared with the
-  previous release's (``PyPIClient.previous_release_metadata``). Names and e-mail addresses are parsed
+  previous release's (``pypi_client.PyPIClient.previous_release_metadata``). Names and e-mail addresses are parsed
   from ``author`` / ``maintainer`` / ``*_email`` (display names inside e-mail fields count, so a PEP 621
   migration that moves a name into ``author_email`` is not a change); placeholders such as ``UNKNOWN``
   are ignored; names match when equal or when their distinctive words overlap (``Python Packaging
@@ -101,15 +101,9 @@ from urllib.parse import unquote, urlsplit
 from packaging.utils import InvalidSdistFilename, InvalidWheelFilename, parse_sdist_filename, parse_wheel_filename
 from packaging.version import InvalidVersion
 
-from app.analysis.acquisition.pypi import (
-    LOOKUP_ERROR,
-    LOOKUP_FOUND,
-    LOOKUP_INVALID_INPUT,
-    LOOKUP_MALFORMED,
-    LOOKUP_NOT_FOUND,
-    ProvenanceLookup,
-    PyPIClient,
-)
+# Imported as a module, not by name: the analyzer package and the acquisition package import
+# each other, so binding names at import time breaks whichever module is imported first.
+from app.analysis.acquisition import pypi as pypi_client
 from app.analysis.analyzers.base import BaseAnalyzer, PackageContext, ScanOptions, ToolStatus
 from app.analysis.findings import Category, Finding, Provenance, Severity
 from app.analysis.signals import Code
@@ -127,7 +121,7 @@ PYPI_PUBLISH_PREDICATE_V1 = "https://docs.pypi.org/attestations/publish/v1"
 SLSA_PROVENANCE_PREDICATE_V1 = "https://slsa.dev/provenance/v1"
 KNOWN_PREDICATE_TYPES = frozenset({PYPI_PUBLISH_PREDICATE_V1, SLSA_PROVENANCE_PREDICATE_V1})
 
-# --- work bounds (the whole provenance document is capped by PyPIClient at MAX_PROVENANCE_BYTES) ---
+# --- work bounds (the whole provenance document is capped by pypi_client.PyPIClient at MAX_PROVENANCE_BYTES) ---
 MAX_BUNDLES = 8
 MAX_ATTESTATIONS_PER_BUNDLE = 8
 MAX_ATTESTATIONS = 16
@@ -850,7 +844,7 @@ def lookup_block_reason(options: ScanOptions) -> str | None:
     return None
 
 
-def default_client() -> PyPIClient:
+def default_client() -> pypi_client.PyPIClient:
     """A PyPI client for this analyzer: registry host allowlist, short total budget, and no downloads."""
     budget = max(1.0, min(float(settings.FETCH_TIMEOUT_SECONDS), float(settings.ANALYZER_TIMEOUT_SECONDS) / 3.0))
     registry = SafeHttpClient(
@@ -861,7 +855,7 @@ def default_client() -> PyPIClient:
     # This analyzer never downloads artifacts: an empty allowlist refuses every artifact request.
     no_downloads = SafeHttpClient(name="pypi-provenance-no-downloads", allowed_hosts=(), max_response_bytes=1,
                                   timeout=budget, retries=0)
-    return PyPIClient(registry_http=registry, artifact_http=no_downloads)
+    return pypi_client.PyPIClient(registry_http=registry, artifact_http=no_downloads)
 
 
 def _iso_seconds(moment: datetime) -> str:
@@ -899,7 +893,7 @@ _UNKNOWN_MESSAGES = {
 class _AttestationOutcome:
     state: str
     reason: str
-    lookup: ProvenanceLookup | None = None
+    lookup: pypi_client.ProvenanceLookup | None = None
     assessment: AttestationAssessment | None = None
     detail: str | None = None
     checked_at: str | None = None
@@ -908,9 +902,9 @@ class _AttestationOutcome:
     def attestation_present(self) -> bool | None:
         if self.lookup is None:
             return None
-        if self.lookup.status in (LOOKUP_FOUND, LOOKUP_MALFORMED):
+        if self.lookup.status in (pypi_client.LOOKUP_FOUND, pypi_client.LOOKUP_MALFORMED):
             return True
-        return False if self.lookup.status == LOOKUP_NOT_FOUND else None
+        return False if self.lookup.status == pypi_client.LOOKUP_NOT_FOUND else None
 
     @property
     def publisher(self) -> dict[str, str | None] | None:
@@ -929,9 +923,9 @@ class ProvenanceAnalyzer(BaseAnalyzer):
 
     def __init__(
         self,
-        client: PyPIClient | None = None,
+        client: pypi_client.PyPIClient | None = None,
         *,
-        client_factory: Callable[[], PyPIClient] | None = None,
+        client_factory: Callable[[], pypi_client.PyPIClient] | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._client = client
@@ -940,7 +934,7 @@ class ProvenanceAnalyzer(BaseAnalyzer):
         self._lock = threading.Lock()
 
     @property
-    def client(self) -> PyPIClient:
+    def client(self) -> pypi_client.PyPIClient:
         """The PyPI client, constructed on first use (never at import or construction time)."""
         if self._client is None:
             with self._lock:
@@ -1005,20 +999,22 @@ class ProvenanceAnalyzer(BaseAnalyzer):
             return _AttestationOutcome(unknown, "no_analyzed_artifact")
         checked_at = _iso_seconds(self._clock())
         lookup = self.client.provenance_lookup(ctx.name, ctx.version, artifact.filename)
-        if lookup.status == LOOKUP_NOT_FOUND:
+        if lookup.status == pypi_client.LOOKUP_NOT_FOUND:
             return _AttestationOutcome(unknown, "no_attestation", lookup, checked_at=checked_at)
-        if lookup.status == LOOKUP_INVALID_INPUT:
+        if lookup.status == pypi_client.LOOKUP_INVALID_INPUT:
             return _AttestationOutcome(unknown, "invalid_coordinates", lookup, detail=lookup.error_kind,
                                        checked_at=checked_at)
-        if lookup.status == LOOKUP_MALFORMED:
+        if lookup.status == pypi_client.LOOKUP_MALFORMED:
             assessment = AttestationAssessment(ProvenanceState.FAILED, "malformed_document",
                                                malformed_reason=lookup.error_kind or "malformed")
             return _AttestationOutcome(ProvenanceState.FAILED, "malformed_document", lookup, assessment,
                                        checked_at=checked_at)
-        if lookup.status != LOOKUP_FOUND:  # LOOKUP_ERROR and anything unexpected: unknown, never failed
+        # Lookup errors and anything unexpected read as unknown, never as failed.
+        if lookup.status != pypi_client.LOOKUP_FOUND:
             status = f", HTTP {lookup.http_status}" if lookup.http_status else ""
             return _AttestationOutcome(unknown, "lookup_error", lookup,
-                                       detail=f"{lookup.error_kind or LOOKUP_ERROR}{status}", checked_at=checked_at)
+                                       detail=f"{lookup.error_kind or pypi_client.LOOKUP_ERROR}{status}",
+                                       checked_at=checked_at)
         assessment = assess_attestations(lookup.document, filename=artifact.filename,
                                          downloaded_sha256=artifact.downloaded_sha256, hash_verified=hash_verified)
         return _AttestationOutcome(assessment.state, assessment.reason, lookup, assessment, checked_at=checked_at)
@@ -1033,7 +1029,8 @@ class ProvenanceAnalyzer(BaseAnalyzer):
             "artifact": filename,
             "lookup": lookup.status if lookup is not None else "not_attempted",
             "lookup_disabled_reason": outcome.detail if outcome.reason == "lookup_disabled" else None,
-            "error_kind": lookup.error_kind if lookup is not None and lookup.status != LOOKUP_FOUND else None,
+            "error_kind": (lookup.error_kind
+                           if lookup is not None and lookup.status != pypi_client.LOOKUP_FOUND else None),
             "http_status": lookup.http_status if lookup is not None else None,
             "hash_mismatch_reported": hash_mismatch or None,
         })
