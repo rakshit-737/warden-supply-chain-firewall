@@ -1,0 +1,11 @@
+# Optional analysis dependencies. Warden runs without them: each one is imported lazily behind
+# an availability check, and a missing dependency is reported as a TOOL_UNAVAILABLE status
+# finding (never as "no findings").
+#
+# Install alongside the runtime requirements:
+#   pip install -r requirements.txt -r requirements-optional.txt
+#
+# yara-python: enables the YARA analysis layer (app/analysis/analyzers/yara_scan.py) with the
+# packaged rules in app/analysis/rules/yara/. The wheel bundles libyara 4.5.x, so no system YARA
+# installation is needed. Warden relies on Rules iteration (yara-python >= 4.3) and fast-mode scans.
+yara-python==4.5.4
