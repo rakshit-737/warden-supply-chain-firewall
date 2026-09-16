@@ -12,6 +12,11 @@ committed in the same transaction as the scan.
 Policy selection: the active policy of the requested environment; when that environment
 has none, the active *production* policy (usually the strictest) is used rather than the
 permissive built-in default; with no active policy at all the engine's default applies.
+Approved, unexpired exceptions for the package, environment and selected policy are loaded
+(:func:`app.policy.exceptions.load_active_exceptions`) and passed to the engine together with the
+scan environment and a single clock reading. ``policy_reasons`` stores the decision's reasons
+followed by a ``policy_evaluation`` info record carrying ``policy_hash``, ``environment`` and
+``exceptions_applied``; the ``scan.create`` audit record carries the hash and the applied exception ids.
 
 Verdicts are stored per environment: the upsert key is (ecosystem, package, version, analyzer
 version, environment), so a re-scan under one environment's policy never overwrites the
@@ -22,6 +27,7 @@ verdicts, i.e. one row per environment a package version was evaluated for.
 
 from __future__ import annotations
 
+import inspect
 import math
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -37,11 +43,13 @@ from app.api.deps import require_permission
 from app.core import metrics
 from app.core.errors import NotFoundError, WardenError
 from app.core.permissions import Permission
+from app.db.base import utcnow
 from app.db.models import DEFAULT_ENVIRONMENT, Decision, Policy, Scan, Severity, Signal, User
 from app.db.session import get_db
 from app.events import bus as event_bus
 from app.events.types import EventType, max_severity
 from app.policy.engine import evaluate
+from app.policy.exceptions import ExceptionGrant, load_active_exceptions
 from app.schemas.common import MAX_PAGE_LIMIT, Page, escape_like
 from app.schemas.scan import ScanOut, ScanRequest, ScanStats, ScanSummary, validate_environment
 from app.services import audit
@@ -120,6 +128,53 @@ def _signal_row(s: dict) -> Signal:
     )
 
 
+POLICY_EVALUATION_RULE = "policy_evaluation"
+MAX_RECORDED_EXCEPTIONS = 50
+
+
+def _dicts(value: Any) -> list[dict]:
+    return [dict(item) for item in (_list_or_none(value) or []) if isinstance(item, dict)]
+
+
+def policy_reasons_record(decision: Any) -> list[dict]:
+    """The decision's reasons plus a trailing ``policy_evaluation`` record.
+
+    ``scans`` has a single JSON column for policy output, so the reproducibility data of an
+    evaluation — ``policy_hash``, ``environment`` and ``exceptions_applied`` — is stored as a final
+    ``info`` record of ``policy_reasons``. A decision object that carries none of it (a v1-style
+    stand-in) has its reasons stored unchanged.
+    """
+    reasons = _dicts(getattr(decision, "reasons", None))
+    policy_hash = getattr(decision, "policy_hash", None)
+    policy_hash = policy_hash if isinstance(policy_hash, str) else None
+    applied = _dicts(getattr(decision, "exceptions_applied", None))
+    if policy_hash is None and not applied:
+        return reasons
+    environment = getattr(decision, "environment", None)
+    environment = environment if isinstance(environment, str) else None
+    reasons.append({
+        "rule": POLICY_EVALUATION_RULE,
+        "effect": "info",
+        "detail": f"Evaluated under policy {policy_hash or 'unknown'} for environment {environment or 'unspecified'}; "
+                  f"{len(applied)} exception(s) applied",
+        "finding_ids": [],
+        "policy_hash": policy_hash,
+        "environment": environment,
+        "exceptions_applied": applied[:MAX_RECORDED_EXCEPTIONS],
+    })
+    return reasons
+
+
+def _policy_audit_metadata(decision: Any) -> dict[str, Any]:
+    policy_hash = getattr(decision, "policy_hash", None)
+    applied = _dicts(getattr(decision, "exceptions_applied", None))
+    return {
+        "policy_hash": policy_hash if isinstance(policy_hash, str) else None,
+        # Ids only: the audit sanitiser bounds lists, and the full records live on the scan row.
+        "exceptions_applied": [str(e.get("id")) for e in applied][:40],
+    }
+
+
 def _apply_result(scan: Scan, result: AnalysisResult, decision: Any, environment: str) -> None:
     risk = getattr(result, "risk", None)
     risk = risk if isinstance(risk, dict) else None
@@ -142,7 +197,7 @@ def _apply_result(scan: Scan, result: AnalysisResult, decision: Any, environment
     scan.model_version = _clip(getattr(result, "model_version", None), 64)
     scan.explanation = _dict_or_none(getattr(result, "explanation", None))
     scan.scan_options = _dict_or_none(getattr(result, "scan_options", None))
-    scan.policy_reasons = _list_or_none(getattr(decision, "reasons", None)) or []
+    scan.policy_reasons = policy_reasons_record(decision)
     malicious = _as_int((risk or {}).get("malicious_risk"))
     scan.malicious_risk = malicious if malicious is not None else result.risk_score
     scan.vulnerability_risk = _as_int((risk or {}).get("vulnerability_risk"))
@@ -219,7 +274,8 @@ def _persist(
     audit.record(
         db, actor_id=user.id, action="scan.create", target_type="package",
         target_id=f"{result.name}=={result.version}",
-        metadata={"decision": decision.decision.value, "risk": result.risk_score, "environment": environment},
+        metadata={"decision": decision.decision.value, "risk": result.risk_score, "environment": environment,
+                  **_policy_audit_metadata(decision)},
     )
     _publish_scan_events(db, scan, result, decision, environment)
     db.commit()
@@ -228,6 +284,27 @@ def _persist(
     metrics.inc_policy(decision.decision.value, environment)
     db.refresh(scan)
     return scan
+
+
+_V2_EVALUATE_KEYWORDS = ("exceptions", "environment", "now")
+
+
+def _evaluate_policy(
+    result: AnalysisResult, policy: Policy | None, exceptions: list[ExceptionGrant], environment: str, now: datetime,
+) -> Any:
+    """Evaluate with the loaded exceptions, the scan environment and one clock reading.
+
+    A v1-style ``evaluate(result, policy)`` stand-in (a plugin or test double patched over
+    ``evaluate``) is still called with just its two positional arguments.
+    """
+    try:
+        parameters = inspect.signature(evaluate).parameters
+    except (TypeError, ValueError):
+        parameters = None
+    if (parameters is None or any(p.kind is p.VAR_KEYWORD for p in parameters.values())
+            or all(name in parameters for name in _V2_EVALUATE_KEYWORDS)):
+        return evaluate(result, policy, exceptions=exceptions, environment=environment, now=now)
+    return evaluate(result, policy)
 
 
 @router.post("", response_model=ScanOut, status_code=201)
@@ -240,7 +317,9 @@ def create_scan(
     options = ScanOptions(environment=environment)
     result = _orchestrator.analyze(payload.ecosystem, payload.name, payload.version, options)
     policy = _active_policy(db, environment)
-    decision = evaluate(result, policy)
+    now = utcnow()
+    exceptions = load_active_exceptions(db, result.name, result.version, environment, getattr(policy, "id", None), now)
+    decision = _evaluate_policy(result, policy, exceptions, environment, now)
     return _persist(db, result, decision, user, policy, environment)
 
 

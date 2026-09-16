@@ -4,6 +4,15 @@ Policies (``policy:read`` / ``policy:write``) are scoped to an environment and e
 policy is active per environment (enforced by the activation route *and* a partial unique
 index in the database).
 
+Policy-as-code: ``POST /policies/validate`` (``policy:read``) validates a document given as an
+object or as YAML/JSON text and returns ``{valid, errors[{loc, msg, line}], warnings, normalized,
+policy_hash}`` without storing anything. Create and update (``policy:write``) accept an optional
+``document`` that is validated strictly, stored normalised and mirrored into the v1 columns (see
+:mod:`app.schemas.policy`). Updating a document-defined policy without a ``document`` key is a
+conflict, so a v1-style PUT can never leave the stored document and the v1 columns disagreeing;
+``"document": null`` converts the policy back to v1 columns explicitly. Every policy response
+carries ``policy_hash``.
+
 Policy exceptions implement a two-person rule:
 
 * ``exception:request`` — any engineering role may request a time-boxed exception;
@@ -16,19 +25,20 @@ Policy exceptions implement a two-person rule:
 * an exception whose ``expires_at`` has passed is reported as ``expired`` and can no longer
   be approved or revoked — expiry needs no background job.
 
-Every transition is written to the audit trail and published as a security event. Applying
-exceptions during policy evaluation is the policy engine's responsibility; this module only
-stores and exposes them.
+Every transition is written to the audit trail and published as a security event. Approved,
+unexpired exceptions are applied during scan evaluation by the policy engine
+(:mod:`app.policy.exceptions`, :mod:`app.policy.engine`).
 
 Policies are mutable rows without a history table, so the hash-chained audit trail is the only
 tamper-evident record of what a policy said. ``policy.create`` records the policy's settings,
-its lists (first ``AUDIT_LIST_ITEMS`` entries plus counts) and ``policy_sha256``, the SHA-256 of
-the canonical JSON of every decision-relevant field (name, environment, thresholds, minimum age,
-blocked capabilities, allowlist, denylist, document). ``policy.update`` records the digest
-before and after plus a field-level diff (added/removed list entries, old/new scalar values), and
-``policy.activate`` records the digest and the ids of the policies it deactivated. The digest
-always covers the full content, so an auditor can verify a stored policy against the chain even
-when a list was too long to log in full.
+its lists (first ``AUDIT_LIST_ITEMS`` entries plus counts), ``policy_sha256`` (the SHA-256 of the
+canonical JSON of every decision-relevant field: name, environment, thresholds, minimum age,
+blocked capabilities, allowlist, denylist, document) and ``policy_hash`` (the hash scan
+evaluations record). ``policy.update`` records both digests before and after, ``changed_fields``
+and a field-level diff (added/removed list entries, old/new scalar values, changed document
+paths), and ``policy.activate`` records the digests and the ids of the policies it deactivated.
+The digests always cover the full content, so an auditor can verify a stored policy against the
+chain even when a list was too long to log in full.
 """
 
 from __future__ import annotations
@@ -51,10 +61,11 @@ from app.db.models import DEFAULT_ENVIRONMENT, ExceptionStatus, Policy, PolicyEx
 from app.db.session import get_db
 from app.events import bus as event_bus
 from app.events.types import EventType
+from app.policy.document import policy_hash_for, validate_policy_data, validate_policy_text
 from app.sbom.models import normalize_name
 from app.schemas.common import MAX_PAGE_LIMIT, Page
 from app.schemas.exception import ExceptionCreate, ExceptionOut, ExceptionStatusOut, ExceptionTransition
-from app.schemas.policy import PolicyCreate, PolicyOut, PolicyUpdate
+from app.schemas.policy import PolicyCreate, PolicyOut, PolicyUpdate, PolicyValidateRequest, PolicyValidateResponse
 from app.schemas.scan import PYPI_NAME_RE, validate_environment
 from app.services import audit
 
@@ -309,6 +320,7 @@ def revoke_exception(
 AUDIT_LIST_ITEMS = 40  # below the audit sanitiser's 50-item bound; the digest covers every entry
 _SCALAR_FIELDS = ("name", "environment", "warn_threshold", "block_threshold", "min_package_age_days")
 _LIST_FIELDS = ("blocked_capabilities", "allowlist", "denylist")
+_DOCUMENT_DIFF_DEPTH = 3
 
 
 def policy_snapshot(policy: Policy) -> dict[str, Any]:
@@ -340,6 +352,17 @@ def _content_metadata(snapshot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _document_paths(before: Any, after: Any, prefix: str = "", depth: int = 0) -> list[str]:
+    """Dotted paths (at most three levels deep) whose values differ between two stored documents."""
+    if isinstance(before, dict) and isinstance(after, dict) and depth < _DOCUMENT_DIFF_DEPTH:
+        paths: list[str] = []
+        for key in sorted(set(before) | set(after), key=str):
+            if before.get(key) != after.get(key):
+                paths.extend(_document_paths(before.get(key), after.get(key), f"{prefix}{key}.", depth + 1))
+        return paths
+    return [prefix.rstrip(".") or "document"]
+
+
 def _policy_changes(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
     changes: dict[str, Any] = {}
     for name in _SCALAR_FIELDS:
@@ -356,8 +379,13 @@ def _policy_changes(before: dict[str, Any], after: dict[str, Any]) -> dict[str, 
         changes["document"] = {
             "before_sha256": _sha256(before["document"]) if before["document"] is not None else None,
             "after_sha256": _sha256(after["document"]) if after["document"] is not None else None,
+            "changed_paths": _document_paths(before["document"], after["document"])[:AUDIT_LIST_ITEMS],
         }
     return changes
+
+
+def _policy_source(policy: Policy) -> str:
+    return "document" if policy.document is not None else "legacy"
 
 
 # =========================================================================== policies
@@ -386,16 +414,35 @@ def active_policy(
     return policy
 
 
+@router.post("/validate", response_model=PolicyValidateResponse)
+def validate_policy(
+    payload: PolicyValidateRequest,
+    _: User = Depends(_policy_reader),
+) -> PolicyValidateResponse:
+    """Validate a policy document (object, or YAML/JSON text) without storing it."""
+    if payload.yaml is not None:
+        outcome = validate_policy_text(payload.yaml, "auto")
+    else:
+        outcome = validate_policy_data(payload.document)
+    return PolicyValidateResponse(
+        valid=outcome.valid, errors=outcome.errors, warnings=outcome.warnings,
+        normalized=outcome.normalized, policy_hash=outcome.policy_hash,
+    )
+
+
 @router.post("", response_model=PolicyOut, status_code=201)
 def create_policy(
     payload: PolicyCreate,
     db: Session = Depends(get_db),
     admin: User = Depends(_policy_writer),
 ) -> Policy:
-    policy = Policy(id=uuid.uuid4(), **payload.model_dump(), version=1, updated_at=datetime.now(timezone.utc))
+    document = payload.document.to_dict() if payload.document is not None else None
+    policy = Policy(id=uuid.uuid4(), **payload.model_dump(exclude={"document"}), document=document, version=1,
+                    updated_at=datetime.now(timezone.utc))
     db.add(policy)
     audit.record(db, actor_id=admin.id, action="policy.create", target_type="policy", target_id=str(policy.id),
-                 metadata={"name": payload.name, "environment": payload.environment, "version": 1,
+                 metadata={"name": policy.name, "environment": policy.environment, "version": 1,
+                           "policy_hash": policy_hash_for(policy), "policy_source": _policy_source(policy),
                            **_content_metadata(policy_snapshot(policy))})
     db.commit()
     db.refresh(policy)
@@ -412,22 +459,33 @@ def update_policy(
     policy = db.get(Policy, policy_id)
     if policy is None:
         raise NotFoundError("Policy not found")
-    data = payload.model_dump()
+    if policy.document is not None and not payload.document_supplied:
+        raise ConflictError(
+            "This policy is defined by a policy-as-code document: include the updated document, or send "
+            '"document": null to manage it through the legacy fields'
+        )
+    data = payload.model_dump(exclude={"document"})
     new_environment = data.pop("environment") or policy.environment
     if policy.is_active and new_environment != policy.environment:
         raise ConflictError("An active policy cannot move to another environment; activate another policy first")
     before = policy_snapshot(policy)
+    hash_before = policy_hash_for(policy)
     for k, v in data.items():
         setattr(policy, k, v)
     policy.environment = new_environment
+    policy.document = (payload.document.with_environment(new_environment).to_dict()
+                       if payload.document is not None else None)
     policy.version = (policy.version or 1) + 1
     policy.updated_at = datetime.now(timezone.utc)
     after = policy_snapshot(policy)
     content = _content_metadata(after)
+    changes = _policy_changes(before, after)
     audit.record(db, actor_id=admin.id, action="policy.update", target_type="policy", target_id=str(policy_id),
                  metadata={"version": policy.version, "environment": new_environment, "is_active": policy.is_active,
                            "policy_sha256_before": policy_digest(before), "policy_sha256": content["policy_sha256"],
-                           "changes": _policy_changes(before, after), "settings": content["settings"],
+                           "policy_hash_before": hash_before, "policy_hash": policy_hash_for(policy),
+                           "policy_source": _policy_source(policy), "changed_fields": sorted(changes),
+                           "changes": changes, "settings": content["settings"],
                            "list_counts": content["list_counts"]})
     db.commit()
     db.refresh(policy)
@@ -459,6 +517,7 @@ def activate_policy(
     audit.record(db, actor_id=admin.id, action="policy.activate", target_type="policy", target_id=str(policy_id),
                  metadata={"environment": policy.environment, "version": policy.version,
                            "policy_sha256": policy_digest(policy_snapshot(policy)),
+                           "policy_hash": policy_hash_for(policy), "policy_source": _policy_source(policy),
                            "deactivated_policy_ids": deactivated})
     db.commit()
     db.refresh(policy)

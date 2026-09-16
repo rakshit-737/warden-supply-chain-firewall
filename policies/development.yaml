@@ -1,0 +1,55 @@
+# Warden X policy: development (advisory, warn-heavy).
+#
+# Only very strong evidence blocks: known malicious indicators and correlated attack chains at
+# confidence >= 0.9, or a risk score of 90+. Everything else that production blocks is reported as
+# a warning so developers see it early without being stopped. There are no vulnerability deny rules,
+# so offline development scans are not warned for missing vulnerability intelligence (the warn-level
+# vulnerability rule then records an informational reason only).
+#
+# IOC_MATCH, critical ATTACK_CHAIN (confidence >= 0.9) and HASH_MISMATCH block regardless of this
+# file; exceptions and the allowlist cannot waive them.
+apiVersion: warden.dev/v1
+kind: Policy
+metadata:
+  name: development-advisory
+  environment: development
+spec:
+  thresholds:
+    warn: 30
+    block: 90
+  min_package_age_days: 0
+  deny:
+    packages: []
+    codes:
+      - IOC_MATCH
+    categories:
+      - ioc
+      - attack_chain
+    capabilities:
+      - ioc
+    vulnerabilities: {}
+    min_confidence: 0.9
+  warn:
+    codes: []
+    categories:
+      - malicious_behavior
+      - install_time_execution
+      - obfuscation
+      - credential_access
+      - dependency_confusion
+      - typosquatting
+      - suspicious_artifact
+      - behavior_drift
+    capabilities:
+      - install_hook_exec
+    vulnerabilities:
+      known_exploited: true
+      min_severity: high
+    min_confidence: 0.5
+  require:
+    provenance: null
+    hash_verified: false
+    sbom: false
+  allow:
+    packages: []
+  exceptions: []

@@ -1,0 +1,68 @@
+# Warden X policy: production (strict).
+#
+# Blocks strong malicious evidence (findings at confidence >= 0.7 in malicious, IOC, attack-chain
+# and dependency-confusion categories), install-time execution hooks, known-exploited (CISA KEV)
+# and critical vulnerabilities. Heuristic observations (obfuscation, credential access,
+# typosquatting ...) warn instead of block, so legitimate packages are not stopped on weak evidence.
+#
+# Notes:
+# * Vulnerability deny rules need vulnerability intelligence. A scan without it (offline, or a
+#   source unavailable) is warned with "vulnerability status unknown"; it is never silently allowed.
+# * PTH_STARTUP_HOOK is deliberately not denied outright: setuptools has shipped an import-line
+#   .pth file (distutils-precedence.pth). The finding is still a primary risk-score indicator and
+#   warns through the install_time_execution category.
+# * IOC_MATCH, critical ATTACK_CHAIN (confidence >= 0.9) and HASH_MISMATCH block regardless of this
+#   file; exceptions and the allowlist cannot waive them.
+#
+# Validate: POST /api/v1/policies/validate with {"yaml": "<file contents>"} (policy:read).
+apiVersion: warden.dev/v1
+kind: Policy
+metadata:
+  name: production-strict
+  environment: production
+spec:
+  thresholds:
+    warn: 40
+    block: 70
+  # Off by default: a minimum release age also delays urgent security releases.
+  min_package_age_days: 0
+  deny:
+    packages: []
+    codes:
+      - IOC_MATCH
+      - BROWSER_CREDENTIAL_ACCESS  # libraries have no legitimate reason to read browser credential stores
+    categories:
+      - malicious_behavior
+      - attack_chain
+      - ioc
+      - dependency_confusion
+    capabilities:
+      - install_hook_exec
+      - ioc
+    vulnerabilities:
+      known_exploited: true
+      min_severity: critical
+      min_cvss: 9.0
+      min_epss: null
+    min_confidence: 0.7
+  warn:
+    codes: []
+    categories:
+      - install_time_execution
+      - obfuscation
+      - credential_access
+      - typosquatting
+      - suspicious_artifact
+      - behavior_drift
+      - integrity
+    capabilities: []
+    vulnerabilities:
+      min_severity: high
+    min_confidence: 0.6
+  require:
+    provenance: null
+    hash_verified: false
+    sbom: false
+  allow:
+    packages: []
+  exceptions: []

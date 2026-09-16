@@ -134,3 +134,29 @@ def test_allowlist_allows_but_not_over_ioc():
         _policy(allowlist=["pkg"]),
     )
     assert d.decision == Decision.block  # IOC is non-overridable
+
+
+# --------------------------------------------------------------------------- policy engine v2 (additive)
+def test_v1_evaluate_call_also_returns_the_v2_decision_fields():
+    d = evaluate(_result(85), _policy())
+    assert d.reasons[0]["rule"] == "block_threshold" and d.reasons[0]["effect"] == "block"
+    assert d.exceptions_applied == [] and len(d.policy_hash) == 64
+    assert evaluate(_result(85), _policy()).to_dict() == d.to_dict()
+
+
+def test_v1_policy_decision_can_still_be_built_positionally():
+    from app.policy.engine import PolicyDecision
+
+    d = PolicyDecision(Decision.allow, ["clean"])
+    assert d.reasons == [] and d.exceptions_applied == [] and d.policy_hash is None
+
+
+def test_missing_policy_row_uses_the_default_policy():
+    d = evaluate(_result(10, caps=[Capability.INSTALL_EXEC]), None)
+    assert d.decision == Decision.block and d.matched_rules == ["blocked_capability:install_hook_exec"]
+    assert evaluate(_result(10), None).matched_rules == ["clean"]
+
+
+def test_allowlisted_package_with_high_score_is_allowed_without_ioc():
+    d = evaluate(_result(95, caps=[], name="Pkg_Name"), _policy(allowlist=["pkg-name"], blocked_capabilities=[]))
+    assert d.decision == Decision.allow and d.matched_rules == ["allowlist"]
