@@ -1,0 +1,198 @@
+{
+  "version": "1.177.0",
+  "results": [
+    {
+      "check_id": "warden.obfuscation.exec-decoded-payload",
+      "path": "__WORKSPACE__/pkg/loader.py",
+      "start": {"line": 7, "col": 10, "offset": 128},
+      "end": {"line": 7, "col": 42, "offset": 160},
+      "extra": {
+        "message": "Data decoded at runtime (base64 / hex / zlib / codecs ...) flows into exec, eval or compile. Decode-then-execute is the typical structure of a packed loader that hides its real code from reviewers.",
+        "metadata": {
+          "category": "obfuscation",
+          "warden_code": "ENCODED_EXEC",
+          "confidence": "HIGH",
+          "warden_confidence": "0.85",
+          "likelihood": "MEDIUM",
+          "impact": "HIGH",
+          "cwe": [
+            "CWE-506: Embedded Malicious Code",
+            "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code ('Eval Injection')"
+          ],
+          "references": ["https://attack.mitre.org/techniques/T1140/", "https://docs.python.org/3/library/functions.html#exec"]
+        },
+        "severity": "ERROR",
+        "fingerprint": "requires login",
+        "lines": "requires login",
+        "validation_state": "NO_VALIDATOR",
+        "engine_kind": "OSS"
+      }
+    },
+    {
+      "check_id": "warden.install_time_execution.setup-network-call",
+      "path": "__WORKSPACE__/setup.py",
+      "start": {"line": 5, "col": 1, "offset": 69},
+      "end": {"line": 5, "col": 69, "offset": 137},
+      "extra": {
+        "message": "setup.py performs a network call at module top level, so it runs on every build or install from source. Packages should not fetch anything while being installed.",
+        "metadata": {
+          "category": "install_time_execution",
+          "warden_code": "INSTALL_HOOK_EXEC",
+          "confidence": "MEDIUM",
+          "warden_confidence": "0.75",
+          "likelihood": "MEDIUM",
+          "impact": "HIGH",
+          "cwe": ["CWE-829: Inclusion of Functionality from Untrusted Control Sphere", "CWE-494: Download of Code Without Integrity Check"],
+          "references": ["https://attack.mitre.org/techniques/T1195/001/", "https://peps.python.org/pep-0517/"]
+        },
+        "severity": "ERROR",
+        "fingerprint": "requires login",
+        "lines": "requires login",
+        "validation_state": "NO_VALIDATOR",
+        "engine_kind": "OSS"
+      }
+    },
+    {
+      "check_id": "warden.malicious_behavior.persistence-write",
+      "path": "__WORKSPACE__/pkg/persist.py",
+      "start": {"line": 3, "col": 11, "offset": 21},
+      "end": {"line": 3, "col": 42, "offset": 52},
+      "extra": {
+        "message": "A shell start-up file, cron table, systemd unit or autostart location is written. Packages that modify these locations gain persistence on the host; outside dedicated shell-setup tools this is malicious.",
+        "metadata": {
+          "category": "malicious_behavior",
+          "warden_code": "PERSISTENCE",
+          "confidence": "MEDIUM",
+          "warden_confidence": "0.6",
+          "likelihood": "LOW",
+          "impact": "HIGH",
+          "cwe": ["CWE-506: Embedded Malicious Code"],
+          "references": ["https://attack.mitre.org/techniques/T1546/004/"],
+          "warden_confidence_by_context": {"install-time": "0.9", "import-time": "0.85", "runtime": "0.6", "test-file": "0.4"}
+        },
+        "severity": "ERROR",
+        "fingerprint": "requires login",
+        "lines": "requires login",
+        "validation_state": "NO_VALIDATOR",
+        "engine_kind": "OSS"
+      }
+    },
+    {
+      "check_id": "warden.obfuscation.exec-decoded-payload",
+      "path": "__WORKSPACE__/tests/test_hidden.py",
+      "start": {"line": 3, "col": 6, "offset": 20},
+      "end": {"line": 3, "col": 42, "offset": 56},
+      "extra": {
+        "message": "Data decoded at runtime (base64 / hex / zlib / codecs ...) flows into exec, eval or compile.",
+        "metadata": {
+          "category": "obfuscation",
+          "warden_code": "ENCODED_EXEC",
+          "confidence": "HIGH",
+          "warden_confidence": "0.85",
+          "cwe": ["CWE-506: Embedded Malicious Code"],
+          "references": ["https://attack.mitre.org/techniques/T1140/"]
+        },
+        "severity": "ERROR",
+        "fingerprint": "requires login",
+        "lines": "requires login",
+        "validation_state": "NO_VALIDATOR",
+        "engine_kind": "OSS"
+      }
+    },
+    {
+      "check_id": "acme.supply-chain.pickle-load",
+      "path": "__WORKSPACE__/pkg/dropper.py",
+      "start": {"line": 18, "col": 12, "offset": 301},
+      "end": {"line": 18, "col": 51, "offset": 340},
+      "extra": {
+        "message": "  Organisation rule (fixture):\n pickle.loads   on data that may be untrusted.  ",
+        "metadata": {
+          "category": "security",
+          "confidence": "LOW",
+          "likelihood": "low",
+          "impact": "HIGH",
+          "cwe": "CWE-502: Deserialization of Untrusted Data",
+          "references": ["https://docs.python.org/3/library/pickle.html", "javascript:alert(1)", 42]
+        },
+        "severity": "INFO",
+        "is_ignored": true,
+        "fingerprint": "requires login",
+        "lines": "requires login",
+        "validation_state": "NO_VALIDATOR",
+        "engine_kind": "OSS"
+      }
+    },
+    {
+      "check_id": "warden.obfuscation.exec-decoded-payload",
+      "path": "__WORKSPACE__/pkg/loader.py",
+      "start": {"line": 7, "col": 10, "offset": 128},
+      "end": {"line": 7, "col": 42, "offset": 160},
+      "extra": {
+        "message": "Duplicate of the first result (fixture).",
+        "metadata": {"category": "obfuscation", "warden_confidence": "0.85"},
+        "severity": "ERROR"
+      }
+    },
+    {
+      "check_id": "warden.obfuscation.exec-decoded-payload",
+      "path": "__WORKSPACE__/../escape.py",
+      "start": {"line": 1, "col": 1, "offset": 0},
+      "end": {"line": 1, "col": 10, "offset": 9},
+      "extra": {"message": "Path outside the workspace (fixture).", "metadata": {}, "severity": "ERROR"}
+    },
+    {
+      "check_id": 42,
+      "path": "__WORKSPACE__/pkg/loader.py",
+      "start": {"line": 1, "col": 1, "offset": 0},
+      "end": {"line": 1, "col": 5, "offset": 4},
+      "extra": {}
+    },
+    {
+      "check_id": "acme.python.reverse-shell-critical",
+      "path": "__WORKSPACE__/pkg/revshell.py",
+      "start": {"col": 5},
+      "end": {"line": 0, "col": 22},
+      "extra": {
+        "message": "Organisation rule without a reported line (fixture).",
+        "metadata": {"category": "malicious_behavior", "warden_confidence": "0.9", "warden_code": "ANALYZER_ERROR"},
+        "severity": "CRITICAL"
+      }
+    }
+  ],
+  "errors": [
+    {
+      "code": 3,
+      "level": "warn",
+      "type": ["PartialParsing", [{"path": "__WORKSPACE__/pkg/broken.py", "start": {"line": 3, "col": 12, "offset": 40}, "end": {"line": 3, "col": 13, "offset": 41}}]],
+      "message": "Syntax error at line __WORKSPACE__/pkg/broken.py:3:\n `:` was unexpected",
+      "path": "__WORKSPACE__/pkg/broken.py"
+    },
+    {
+      "code": 2,
+      "level": "warn",
+      "type": "Timeout",
+      "rule_id": "warden.malicious_behavior.persistence-write",
+      "message": "Timeout when running warden.malicious_behavior.persistence-write on __WORKSPACE__/pkg/big.py:\n ",
+      "path": "__WORKSPACE__/pkg/big.py"
+    }
+  ],
+  "paths": {
+    "scanned": [
+      "__WORKSPACE__/pkg/beacon.py",
+      "__WORKSPACE__/pkg/cr_loader.py",
+      "__WORKSPACE__/pkg/dropper.py",
+      "__WORKSPACE__/pkg/loader.py",
+      "__WORKSPACE__/pkg/native.py",
+      "__WORKSPACE__/pkg/nosem.py",
+      "__WORKSPACE__/pkg/persist.py",
+      "__WORKSPACE__/pkg/revshell.py",
+      "__WORKSPACE__/pkg/shell.py",
+      "__WORKSPACE__/pkg/steal.py",
+      "__WORKSPACE__/setup.py",
+      "__WORKSPACE__/tests/test_hidden.py"
+    ]
+  },
+  "engine_requested": "OSS",
+  "skipped_rules": [],
+  "profiling_results": []
+}

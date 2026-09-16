@@ -1,0 +1,624 @@
+# Warden packaged Semgrep rules for Python packages (rule-set version 1.0.0).
+#
+# These rules are designed to detect code structures that are common in malicious Python
+# packages. They are signals, not verdicts: Warden combines them with its other analyzers.
+# See README.md for the metadata contract, calibration rationale and the known
+# false-positive / false-negative trade-offs of each rule.
+#
+# Metadata values must be strings, integers, lists or maps: semgrep's rule loader rejects
+# YAML floats, so calibrated confidences are quoted decimal strings ("0.85").
+#
+# Semgrep parses the scanned code; nothing is executed.
+
+rules:
+  # ---------------------------------------------------------------------------------------
+  # exec / eval of runtime-decoded data (packed loaders)
+  # ---------------------------------------------------------------------------------------
+  - id: warden.obfuscation.exec-decoded-payload
+    message: >-
+      Data decoded at runtime (base64 / hex / zlib / codecs ...) flows into exec, eval or
+      compile. Decode-then-execute is the typical structure of a packed loader that hides its
+      real code from reviewers.
+    severity: ERROR
+    languages: [python]
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern: base64.$DECODE(...)
+              - pattern: binascii.$DECODE(...)
+          - metavariable-regex:
+              metavariable: $DECODE
+              regex: ^(b64decode|urlsafe_b64decode|standard_b64decode|b32decode|b32hexdecode|b16decode|a85decode|b85decode|z85decode|decodebytes|decodestring|unhexlify|a2b_base64|a2b_hex|a2b_uu)$
+      - pattern: codecs.decode(...)
+      - pattern: bytes.fromhex(...)
+      - pattern: bytearray.fromhex(...)
+      - pattern: zlib.decompress(...)
+      - pattern: gzip.decompress(...)
+      - pattern: bz2.decompress(...)
+      - pattern: lzma.decompress(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: exec($CODE, ...)
+              - pattern: eval($CODE, ...)
+              - pattern: compile($CODE, ...)
+              - pattern: builtins.exec($CODE, ...)
+              - pattern: builtins.eval($CODE, ...)
+          - focus-metavariable: $CODE
+    metadata:
+      category: obfuscation
+      warden_code: ENCODED_EXEC
+      confidence: HIGH
+      warden_confidence: "0.85"
+      likelihood: MEDIUM
+      impact: HIGH
+      cwe:
+        - "CWE-506: Embedded Malicious Code"
+        - "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code ('Eval Injection')"
+      references:
+        - https://attack.mitre.org/techniques/T1140/
+        - https://docs.python.org/3/library/functions.html#exec
+
+  # ---------------------------------------------------------------------------------------
+  # exec / eval of network-fetched data (droppers)
+  # ---------------------------------------------------------------------------------------
+  - id: warden.malicious_behavior.exec-network-payload
+    message: >-
+      Data fetched over the network flows into exec, eval or compile. Executing code downloaded
+      at run time is dropper behaviour and bypasses every review of the published package.
+    severity: ERROR
+    languages: [python]
+    mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: urllib.request.urlopen(...)
+          - pattern: urllib.urlopen(...)
+          - pattern: urllib2.urlopen(...)
+          - pattern: requests.$VERB(...)
+          - pattern: requests.Session(...).$VERB(...)
+          - pattern: httpx.$VERB(...)
+          - pattern: urllib3.PoolManager(...).request(...)
+          - pattern: http.client.HTTPConnection(...).getresponse(...)
+          - pattern: http.client.HTTPSConnection(...).getresponse(...)
+          - pattern: socket.create_connection(...).recv(...)
+          - pattern: socket.socket(...).recv(...)
+          - patterns:
+              - pattern: $SOCK.recv(...)
+              - pattern-inside: |
+                  $SOCK = socket.$MAKE(...)
+                  ...
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: exec($CODE, ...)
+              - pattern: eval($CODE, ...)
+              - pattern: compile($CODE, ...)
+              - pattern: builtins.exec($CODE, ...)
+              - pattern: builtins.eval($CODE, ...)
+          - focus-metavariable: $CODE
+    metadata:
+      category: malicious_behavior
+      warden_code: SUSPICIOUS_DOWNLOAD
+      confidence: HIGH
+      warden_confidence: "0.9"
+      likelihood: MEDIUM
+      impact: HIGH
+      cwe:
+        - "CWE-494: Download of Code Without Integrity Check"
+        - "CWE-94: Improper Control of Generation of Code ('Code Injection')"
+      references:
+        - https://attack.mitre.org/techniques/T1105/
+        - https://cwe.mitre.org/data/definitions/494.html
+
+  # ---------------------------------------------------------------------------------------
+  # shell=True / os.system with a non-literal command
+  # ---------------------------------------------------------------------------------------
+  - id: warden.capability.shell-dynamic-command
+    message: >-
+      A shell command built from non-constant data is executed (shell=True, os.system or
+      os.popen). This is a command-execution capability and an injection risk; review where the
+      command string comes from.
+    severity: WARNING
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern: subprocess.$RUN($CMD, ..., shell=True, ...)
+              - metavariable-regex:
+                  metavariable: $RUN
+                  regex: ^(Popen|call|check_call|check_output|run)$
+          - pattern: subprocess.getoutput($CMD, ...)
+          - pattern: subprocess.getstatusoutput($CMD, ...)
+          - pattern: os.system($CMD)
+          - pattern: os.popen($CMD, ...)
+      - pattern-not: subprocess.$RUN("...", ...)
+      - pattern-not: subprocess.getoutput("...", ...)
+      - pattern-not: subprocess.getstatusoutput("...", ...)
+      - pattern-not: os.system("...")
+      - pattern-not: os.popen("...", ...)
+    metadata:
+      category: capability
+      warden_code: SHELL_INVOCATION
+      confidence: LOW
+      warden_confidence: "0.55"
+      likelihood: LOW
+      impact: HIGH
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')"
+      references:
+        - https://docs.python.org/3/library/subprocess.html#security-considerations
+      warden_confidence_by_context:
+        install-time: "0.65"
+        import-time: "0.6"
+        runtime: "0.55"
+        test-file: "0.35"
+
+  # ---------------------------------------------------------------------------------------
+  # network access at the top level of setup.py (runs on every sdist build / install)
+  # ---------------------------------------------------------------------------------------
+  - id: warden.install_time_execution.setup-network-call
+    message: >-
+      setup.py performs a network call at module top level, so it runs on every build or
+      install from source. Packages should not fetch anything while being installed.
+    severity: ERROR
+    languages: [python]
+    paths:
+      include:
+        - "setup.py"
+        - "**/setup.py"
+    patterns:
+      - pattern-either:
+          - pattern: urllib.request.urlopen(...)
+          - pattern: urllib.request.urlretrieve(...)
+          - pattern: urllib.urlopen(...)
+          - pattern: urllib.urlretrieve(...)
+          - pattern: urllib2.urlopen(...)
+          - pattern: requests.$VERB(...)
+          - pattern: httpx.$VERB(...)
+          - pattern: http.client.HTTPConnection(...)
+          - pattern: http.client.HTTPSConnection(...)
+          - pattern: socket.create_connection(...)
+          - pattern: socket.getaddrinfo(...)
+          - pattern: socket.gethostbyname(...)
+          - pattern: socket.socket(...).connect(...)
+          - patterns:
+              - pattern: $SOCK.connect(...)
+              - pattern-inside: |
+                  $SOCK = socket.socket(...)
+                  ...
+      - pattern-not-inside: |
+          def $FUNC(...):
+            ...
+    metadata:
+      category: install_time_execution
+      warden_code: INSTALL_HOOK_EXEC
+      confidence: MEDIUM
+      warden_confidence: "0.75"
+      likelihood: MEDIUM
+      impact: HIGH
+      cwe:
+        - "CWE-829: Inclusion of Functionality from Untrusted Control Sphere"
+        - "CWE-494: Download of Code Without Integrity Check"
+      references:
+        - https://attack.mitre.org/techniques/T1195/001/
+        - https://peps.python.org/pep-0517/
+
+  # ---------------------------------------------------------------------------------------
+  # whole-environment dumps sent to a network sink (credential exfiltration)
+  # ---------------------------------------------------------------------------------------
+  - id: warden.credential_access.environ-dump-to-network
+    message: >-
+      The whole process environment (os.environ) is sent to a network destination. Environment
+      variables hold CI tokens and cloud credentials; dumping all of them off-host is a common
+      credential-stealer technique.
+    severity: ERROR
+    languages: [python]
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern: os.environ
+              - pattern: os.environb
+          - pattern-not-inside: os.environ[...]
+          - pattern-not-inside: os.environb[...]
+          - pattern-not-inside: os.environ.get(...)
+          - pattern-not-inside: os.environb.get(...)
+          - pattern-not-inside: os.environ.setdefault(...)
+          - pattern-not-inside: os.environ.pop(...)
+          - pattern-not-inside: os.environ.update(...)
+          - pattern-not-inside: $KEY in os.environ
+          - pattern-not-inside: $KEY not in os.environ
+      # Taint does not flow through a dict comprehension's generator (semgrep 1.177.0).
+      - pattern: |
+          {$K: $V for $K, $V in os.environ.items()}
+      - pattern: |
+          {$K: os.environ[$K] for $K in os.environ}
+    pattern-sanitizers:
+      # Reading one named variable is configuration, not a dump.
+      - pattern: $ENV["..."]
+      - pattern: $ENV.get("...", ...)
+      - pattern: len(...)
+    pattern-sinks:
+      - pattern-either:
+          - pattern: requests.$VERB(...)
+          - pattern: requests.Request(...)
+          - pattern: requests.Session(...).$VERB(...)
+          - pattern: httpx.$VERB(...)
+          - pattern: urllib.request.urlopen(...)
+          - pattern: urllib.request.Request(...)
+          - pattern: http.client.HTTPConnection(...).request(...)
+          - pattern: http.client.HTTPSConnection(...).request(...)
+          - pattern: socket.socket(...).send(...)
+          - pattern: socket.socket(...).sendall(...)
+          - pattern: socket.socket(...).sendto(...)
+          - pattern: smtplib.SMTP(...).sendmail(...)
+          - patterns:
+              - pattern-either:
+                  - pattern: $SOCK.send(...)
+                  - pattern: $SOCK.sendall(...)
+                  - pattern: $SOCK.sendto(...)
+              - pattern-inside: |
+                  $SOCK = socket.$MAKE(...)
+                  ...
+          - patterns:
+              - pattern-either:
+                  - pattern: $CONN.request(...)
+                  - pattern: $CONN.post(...)
+                  - pattern: $CONN.put(...)
+              - pattern-either:
+                  - pattern-inside: |
+                      $CONN = http.client.$CLS(...)
+                      ...
+                  - pattern-inside: |
+                      $CONN = requests.Session(...)
+                      ...
+                  - pattern-inside: |
+                      $CONN = httpx.Client(...)
+                      ...
+                  - pattern-inside: |
+                      $CONN = urllib3.PoolManager(...)
+                      ...
+    metadata:
+      category: credential_access
+      warden_code: ENV_HARVEST
+      confidence: HIGH
+      warden_confidence: "0.85"
+      likelihood: MEDIUM
+      impact: HIGH
+      cwe:
+        - "CWE-200: Exposure of Sensitive Information to an Unauthorized Actor"
+        - "CWE-506: Embedded Malicious Code"
+      references:
+        - https://attack.mitre.org/techniques/T1552/001/
+        - https://attack.mitre.org/techniques/T1041/
+
+  # ---------------------------------------------------------------------------------------
+  # marshal / pickle loads of network data
+  # ---------------------------------------------------------------------------------------
+  - id: warden.malicious_behavior.marshal-loads-network-data
+    message: >-
+      Bytes fetched over the network are deserialised with marshal. marshal carries Python code
+      objects, so this is the loader half of a download-and-execute chain.
+    severity: ERROR
+    languages: [python]
+    mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: urllib.request.urlopen(...)
+          - pattern: urllib.urlopen(...)
+          - pattern: urllib2.urlopen(...)
+          - pattern: requests.$VERB(...)
+          - pattern: requests.Session(...).$VERB(...)
+          - pattern: httpx.$VERB(...)
+          - pattern: socket.create_connection(...).recv(...)
+          - pattern: socket.socket(...).recv(...)
+          - patterns:
+              - pattern: $SOCK.recv(...)
+              - pattern-inside: |
+                  $SOCK = socket.$MAKE(...)
+                  ...
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: marshal.loads($DATA, ...)
+              - pattern: marshal.load($DATA, ...)
+          - focus-metavariable: $DATA
+    metadata:
+      category: malicious_behavior
+      warden_code: SUSPICIOUS_DOWNLOAD
+      confidence: HIGH
+      warden_confidence: "0.85"
+      likelihood: MEDIUM
+      impact: HIGH
+      cwe:
+        - "CWE-494: Download of Code Without Integrity Check"
+        - "CWE-502: Deserialization of Untrusted Data"
+      references:
+        - https://docs.python.org/3/library/marshal.html
+        - https://attack.mitre.org/techniques/T1105/
+
+  - id: warden.malicious_behavior.pickle-loads-network-data
+    message: >-
+      Bytes fetched over the network are unpickled. Unpickling runs arbitrary code chosen by
+      whoever controls the server, so this is a remote code-execution channel even when the
+      intent is benign caching.
+    severity: ERROR
+    languages: [python]
+    mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: urllib.request.urlopen(...)
+          - pattern: urllib.urlopen(...)
+          - pattern: urllib2.urlopen(...)
+          - pattern: requests.$VERB(...)
+          - pattern: requests.Session(...).$VERB(...)
+          - pattern: httpx.$VERB(...)
+          - pattern: socket.create_connection(...).recv(...)
+          - pattern: socket.socket(...).recv(...)
+          - patterns:
+              - pattern: $SOCK.recv(...)
+              - pattern-inside: |
+                  $SOCK = socket.$MAKE(...)
+                  ...
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: pickle.loads($DATA, ...)
+              - pattern: pickle.load($DATA, ...)
+              - pattern: _pickle.loads($DATA, ...)
+              - pattern: cPickle.loads($DATA, ...)
+              - pattern: dill.loads($DATA, ...)
+              - pattern: cloudpickle.loads($DATA, ...)
+          - focus-metavariable: $DATA
+    metadata:
+      category: malicious_behavior
+      warden_code: SUSPICIOUS_DOWNLOAD
+      confidence: MEDIUM
+      warden_confidence: "0.65"
+      likelihood: LOW
+      impact: HIGH
+      cwe:
+        - "CWE-502: Deserialization of Untrusted Data"
+      references:
+        - https://docs.python.org/3/library/pickle.html
+        - https://cwe.mitre.org/data/definitions/502.html
+
+  # ---------------------------------------------------------------------------------------
+  # persistence: writes to shell start-up files, cron, systemd, autostart locations
+  # ---------------------------------------------------------------------------------------
+  - id: warden.malicious_behavior.persistence-write
+    message: >-
+      A shell start-up file, cron table, systemd unit or autostart location is written. Packages
+      that modify these locations gain persistence on the host; outside dedicated shell-setup
+      tools this is malicious.
+    severity: ERROR
+    languages: [python]
+    mode: taint
+    pattern-sources:
+      # String-literal regex operator. (A "$X" + metavariable-regex source did not match literals
+      # such as "~/.bashrc" under semgrep 1.177.0.) "." stands in for path separators.
+      - pattern: |
+          "=~/(?i)(\.bashrc|\.bash_profile|\.bash_login|\.zshrc|\.zprofile|\.zshenv|\.zlogin|(^|[^A-Za-z0-9_])\.profile$|config\.fish|.etc.profile|.etc.bash\.bashrc|.etc.zsh.|.etc.cron|.var.spool.cron|.etc.systemd.|\.config.systemd.|.lib.systemd.system|.etc.init\.d.|.etc.rc\.local|\.config.autostart|LaunchAgents|LaunchDaemons|Start Menu.Programs.Startup)/"
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - patterns:
+                  - pattern-either:
+                      - pattern: open($TARGET, "$MODE", ...)
+                      - pattern: open($TARGET, mode="$MODE", ...)
+                      - pattern: io.open($TARGET, "$MODE", ...)
+                      - pattern: codecs.open($TARGET, "$MODE", ...)
+                  - metavariable-regex:
+                      metavariable: $MODE
+                      regex: "[wax+]"
+              - patterns:
+                  - pattern-either:
+                      - pattern: $TARGET.write_text(...)
+                      - pattern: $TARGET.write_bytes(...)
+                      - pattern: shutil.copy($SRC, $TARGET, ...)
+                      - pattern: shutil.copyfile($SRC, $TARGET, ...)
+                      - pattern: shutil.copy2($SRC, $TARGET, ...)
+                      - pattern: shutil.move($SRC, $TARGET, ...)
+                      - pattern: os.symlink($SRC, $TARGET, ...)
+              - patterns:
+                  - pattern-either:
+                      - pattern: $TARGET.open("$MODE", ...)
+                      - pattern: $TARGET.open(mode="$MODE", ...)
+                  - metavariable-regex:
+                      metavariable: $MODE
+                      regex: "[wax+]"
+          - focus-metavariable: $TARGET
+    metadata:
+      category: malicious_behavior
+      warden_code: PERSISTENCE
+      confidence: MEDIUM
+      warden_confidence: "0.6"
+      likelihood: LOW
+      impact: HIGH
+      cwe:
+        - "CWE-506: Embedded Malicious Code"
+      references:
+        - https://attack.mitre.org/techniques/T1546/004/
+        - https://attack.mitre.org/techniques/T1053/003/
+        - https://attack.mitre.org/techniques/T1543/002/
+      warden_confidence_by_context:
+        install-time: "0.9"
+        import-time: "0.85"
+        runtime: "0.6"
+        test-file: "0.4"
+
+  # ---------------------------------------------------------------------------------------
+  # ctypes loading of a library that was just downloaded
+  # ---------------------------------------------------------------------------------------
+  - id: warden.malicious_behavior.ctypes-load-downloaded-library
+    message: >-
+      A native library is loaded with ctypes from a file that was downloaded earlier in the same
+      scope. Loading freshly downloaded native code runs unreviewed machine code in-process.
+    severity: ERROR
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern-inside: |
+              urllib.request.urlretrieve($URL, $LIB, ...)
+              ...
+          - pattern-inside: |
+              $LIB, $HEADERS = urllib.request.urlretrieve(...)
+              ...
+          - pattern-inside: |
+              urllib.urlretrieve($URL, $LIB, ...)
+              ...
+          - patterns:
+              - pattern-either:
+                  - pattern-inside: |
+                      $RESP = requests.$VERB(...)
+                      ...
+                  - pattern-inside: |
+                      $RESP = httpx.$VERB(...)
+                      ...
+                  - pattern-inside: |
+                      $RESP = urllib.request.urlopen(...)
+                      ...
+                  - pattern-inside: |
+                      with urllib.request.urlopen(...) as $RESP:
+                        ...
+                      ...
+                  - pattern-inside: |
+                      with requests.$VERB(...) as $RESP:
+                        ...
+                      ...
+              - pattern-either:
+                  - pattern-inside: |
+                      with open($LIB, "$MODE") as $FH:
+                        ...
+                      ...
+                  - pattern-inside: |
+                      $FH = open($LIB, "$MODE")
+                      ...
+                  - pattern-inside: |
+                      open($LIB, "$MODE").write(...)
+                      ...
+                  - pattern-inside: |
+                      $LIB.write_bytes(...)
+                      ...
+      - pattern-either:
+          - pattern: ctypes.CDLL($LIB, ...)
+          - pattern: ctypes.PyDLL($LIB, ...)
+          - pattern: ctypes.WinDLL($LIB, ...)
+          - pattern: ctypes.OleDLL($LIB, ...)
+          - pattern: ctypes.cdll.LoadLibrary($LIB, ...)
+          - pattern: ctypes.windll.LoadLibrary($LIB, ...)
+          - pattern: ctypes.pydll.LoadLibrary($LIB, ...)
+          - pattern: ctypes.oledll.LoadLibrary($LIB, ...)
+          - pattern: ctypes.CDLL(str($LIB), ...)
+          - pattern: ctypes.cdll.LoadLibrary(str($LIB), ...)
+    metadata:
+      category: malicious_behavior
+      warden_code: NATIVE_CODE_LOADING
+      confidence: MEDIUM
+      warden_confidence: "0.65"
+      likelihood: LOW
+      impact: HIGH
+      cwe:
+        - "CWE-494: Download of Code Without Integrity Check"
+        - "CWE-829: Inclusion of Functionality from Untrusted Control Sphere"
+      references:
+        - https://attack.mitre.org/techniques/T1129/
+        - https://docs.python.org/3/library/ctypes.html
+      # Some legitimate packages fetch a prebuilt library lazily inside a function (often with a
+      # digest check this rule cannot see), so runtime matches stay below the policy gate.
+      warden_confidence_by_context:
+        install-time: "0.9"
+        import-time: "0.85"
+        runtime: "0.65"
+        test-file: "0.4"
+
+  # ---------------------------------------------------------------------------------------
+  # reverse shell: socket connect + dup2 of the socket onto stdio + shell
+  # ---------------------------------------------------------------------------------------
+  - id: warden.malicious_behavior.reverse-shell
+    message: >-
+      A connected socket is duplicated onto the process's standard streams and a shell or
+      interpreter is started: the classic Python reverse shell, which hands an interactive shell
+      to a remote host.
+    severity: ERROR
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: pty.spawn(...)
+          - pattern: os.execl(...)
+          - pattern: os.execle(...)
+          - pattern: os.execlp(...)
+          - pattern: os.execv(...)
+          - pattern: os.execve(...)
+          - pattern: os.execvp(...)
+          - pattern: os.spawnl(...)
+          - pattern: os.system(...)
+          - pattern: subprocess.$RUN(...)
+      - pattern-either:
+          - pattern-inside: |
+              $SOCK.connect(...)
+              ...
+          - pattern-inside: |
+              $SOCK = socket.create_connection(...)
+              ...
+      - pattern-inside: |
+          ...
+          <... os.dup2($SOCK.fileno(), ...) ...>
+          ...
+    metadata:
+      category: malicious_behavior
+      warden_code: SHELL_INVOCATION
+      confidence: HIGH
+      warden_confidence: "0.95"
+      likelihood: MEDIUM
+      impact: HIGH
+      cwe:
+        - "CWE-506: Embedded Malicious Code"
+      references:
+        - https://attack.mitre.org/techniques/T1059/006/
+        - https://attack.mitre.org/techniques/T1059/004/
+
+  # ---------------------------------------------------------------------------------------
+  # HTTP requests to raw public IP addresses
+  # ---------------------------------------------------------------------------------------
+  - id: warden.capability.raw-ip-url-request
+    message: >-
+      An HTTP request targets a raw public IP address instead of a host name. Legitimate
+      services are normally addressed by name; hard-coded IPs are common for malware command
+      and control and exfiltration endpoints.
+    severity: WARNING
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: requests.$VERB("$URL", ...)
+          - pattern: requests.request($METHOD, "$URL", ...)
+          - pattern: requests.Session(...).$VERB("$URL", ...)
+          - pattern: httpx.$VERB("$URL", ...)
+          - pattern: urllib.request.urlopen("$URL", ...)
+          - pattern: urllib.request.Request("$URL", ...)
+          - pattern: urllib.request.urlretrieve("$URL", ...)
+          - pattern: urllib.urlopen("$URL", ...)
+          - pattern: urllib2.urlopen("$URL", ...)
+      - metavariable-regex:
+          metavariable: $URL
+          # Public IPv4 only: loopback, private, link-local (incl. cloud metadata), broadcast and
+          # well-known public DNS resolvers (DNS-over-HTTPS endpoints) are excluded.
+          regex: ^(?i:https?|ftp)://(?:[^/@\s]*@)?(?!(?:1\.1\.1\.1|1\.0\.0\.1|8\.8\.8\.8|8\.8\.4\.4|9\.9\.9\.9|149\.112\.112\.112)(?::\d{1,5})?(?:[/?#]|$))(?!(?:127|10|0)\.)(?!169\.254\.)(?!192\.168\.)(?!172\.(?:1[6-9]|2\d|3[01])\.)(?!255\.)(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}(?::\d{1,5})?(?:[/?#]|$)
+    metadata:
+      category: capability
+      warden_code: NETWORK_EGRESS
+      confidence: MEDIUM
+      warden_confidence: "0.6"
+      likelihood: LOW
+      impact: MEDIUM
+      cwe:
+        - "CWE-506: Embedded Malicious Code"
+      references:
+        - https://attack.mitre.org/techniques/T1071/001/
+      # Capability-grade: every context stays below the policy engine's default 0.7 gate.
+      warden_confidence_by_context:
+        install-time: "0.65"
+        import-time: "0.62"
+        runtime: "0.6"
+        test-file: "0.3"
