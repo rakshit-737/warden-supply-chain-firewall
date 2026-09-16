@@ -1,0 +1,21 @@
+# warden-public-index-snapshot v1
+# source: https://pypi.org/simple/
+# generated_at: 2026-09-01T00:00:00Z
+# count: 8
+# FIXTURE: synthetic test data for tests/test_dependency_confusion.py (see README.md).
+# Presence of a name here says nothing about the real PyPI.
+certifi
+examplecorp-auth
+examplecorp-billing-sdk
+examplecorp.shared.utils
+flask
+# a comment after the header is skipped, not parsed as header
+Requests_OAuthlib
+requests
+   urllib3   
+
+not a valid name
+-leading-dash
+naïve-unicode
+bad/slash
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa

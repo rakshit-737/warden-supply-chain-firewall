@@ -1,0 +1,18 @@
+{
+  "meta": {
+    "api-version": "1.1",
+    "_last-serial": 1,
+    "_fixture": "FIXTURE: synthetic PEP 691 root index for tests/test_dependency_confusion.py; not real PyPI data"
+  },
+  "projects": [
+    {"name": "Requests", "_last-serial": 1},
+    {"name": "requests", "_last-serial": 1},
+    {"name": "examplecorp_auth", "_last-serial": 1},
+    {"name": "Flask", "_last-serial": 1},
+    {"name": "zope.interface", "_last-serial": 1},
+    {"name": "bad name", "_last-serial": 1},
+    {"name": 42},
+    "not-an-object",
+    {}
+  ]
+}

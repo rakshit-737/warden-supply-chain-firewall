@@ -1,0 +1,11 @@
+# FIXTURE: synthetic requirements file for tests/test_dependency_confusion.py (reserved example hosts, fake token).
+--index-url https://ci-bot:fixture-token-456@pkgs.examplecorp.example/simple
+--extra-index-url https://pypi.org/simple
+
+requests==2.32.3
+flask>=3.0
+examplecorp-auth>=1.2
+examplecorp_billing_sdk==4.0.1
+examplecorp-ledger==2.1.0 --hash=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+examplecorp-newtool
+examplecorp-cli @ git+https://git.examplecorp.example/tools/cli.git
