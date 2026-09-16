@@ -43,3 +43,4 @@ warden-results.sarif
 
 # Local tooling
 .claude/
+.opencode
