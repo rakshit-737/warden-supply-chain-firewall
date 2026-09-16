@@ -24,22 +24,83 @@ from app.analysis.analyzers.base import BaseAnalyzer, PackageContext
 from app.analysis.analyzers.static_code import LocationCollector
 from app.analysis.signals import Capability, Code, Severity, Signal
 
-ANALYZER_VERSION = "1.1.0"
+ANALYZER_VERSION = "1.2.0"
 
 _CAP_MODULES = {"socket", "subprocess", "requests", "urllib", "os", "ctypes", "base64", "http"}
 # Capability imports that on their own make a build script "active" (os/base64 do not).
 _ACTIVE_MODULES = {"socket", "subprocess", "requests", "urllib", "http", "ctypes"}
+
+# Not every kind of install-time activity is equally suspicious. Fetching a URL or evaluating
+# code during installation is the classic supply-chain payload; running a *process* is also how
+# every C-extension package invokes its compiler (psutil and numpy both do it). Grading the
+# finding by what the script actually does keeps the vector visible without treating an
+# ordinary native build as malware.
+_NETWORK_MODULES = {"socket", "requests", "urllib", "http", "httpx", "ftplib", "telnetlib", "smtplib"}
+_NETWORK_ATTRS = {"urlopen", "get", "post", "request", "connect", "urlretrieve"}
+_PROCESS_ATTRS = {"system", "popen", "run", "Popen", "check_output", "check_call", "call", "spawnv", "spawnve"}
+_SHELL_ATTRS = {"system", "popen"}
+_DECODER_ATTRS = {"b64decode", "b32decode", "b16decode", "a85decode", "unhexlify", "decompress"}
+
+KIND_NETWORK = "network"
+KIND_DYNAMIC = "dynamic_execution"
+KIND_PROCESS = "process"
+KIND_SHELL = "shell"
+KIND_NATIVE = "native_library"
 _DYNAMIC = {"eval", "exec", "compile", "__import__"}
 _SUSPICIOUS_ATTRS = {"system", "popen", "run", "Popen", "check_output", "urlopen", "get", "post"}
 
 # Active behaviour in setup.py is strong structural evidence; a cmdclass override alone is
 # common in legitimate native-extension builds, so it is a weaker indicator.
 CONFIDENCE_ACTIVE = 0.85
+CONFIDENCE_SHELL = 0.7
+# A build script that only runs a process with ordinary arguments is usually calling a compiler.
+CONFIDENCE_PROCESS_ONLY = 0.5
 CONFIDENCE_CMDCLASS_ONLY = 0.6
 CONFIDENCE_UNPARSEABLE = 0.6
 
 _ACTIVE, _CMDCLASS = "active", "cmdclass"
 
+
+def _import_kind(module: str) -> str:
+    """Which behaviour an imported capability module implies."""
+    if module in _NETWORK_MODULES:
+        return KIND_NETWORK
+    if module == "ctypes":
+        return KIND_NATIVE
+    return KIND_PROCESS
+
+
+def _call_kinds(node: ast.Call, fn: ast.Attribute) -> set[str]:
+    """Classify one attribute call inside a build script."""
+    kinds: set[str] = set()
+    attr = fn.attr
+    root = fn.value.id if isinstance(fn.value, ast.Name) else None
+    if attr in _NETWORK_ATTRS and root not in {"os", "subprocess"}:
+        kinds.add(KIND_NETWORK)
+    if attr in _PROCESS_ATTRS:
+        kinds.add(KIND_PROCESS)
+        shell = any(kw.arg == "shell" and getattr(kw.value, "value", False) is True for kw in node.keywords)
+        if shell or attr in _SHELL_ATTRS:
+            kinds.add(KIND_SHELL)
+    if attr in _DECODER_ATTRS:
+        kinds.add(KIND_DYNAMIC)
+    return kinds
+
+
+def _grade(kinds: set[str]) -> tuple[Severity, float, float, str]:
+    """Severity, weight, confidence and message for the observed install-time behaviour."""
+    if KIND_NETWORK in kinds or KIND_DYNAMIC in kinds:
+        return (Severity.critical, 12.0, CONFIDENCE_ACTIVE,
+                "setup.py fetches or evaluates content at install time - classic install-time RCE vector")
+    if KIND_SHELL in kinds:
+        return (Severity.high, 7.0, CONFIDENCE_SHELL,
+                "setup.py runs a shell command at install time")
+    if KIND_NATIVE in kinds:
+        return (Severity.high, 6.0, CONFIDENCE_SHELL,
+                "setup.py loads a native library at install time")
+    # Process execution with ordinary arguments: how native extensions invoke their compiler.
+    return (Severity.medium, 5.0, CONFIDENCE_PROCESS_ONLY,
+            "setup.py runs a process at install time (common in native-extension builds)")
 
 class InstallScriptAnalyzer(BaseAnalyzer):
     name = "install_script"
@@ -71,6 +132,7 @@ class InstallScriptAnalyzer(BaseAnalyzer):
 
             suspicious_calls: list[str] = []
             cap_imports: set[str] = set()
+            kinds: set[str] = set()
             has_install_hook = False
 
             for node in ast.walk(tree):
@@ -80,39 +142,42 @@ class InstallScriptAnalyzer(BaseAnalyzer):
                         if top in _CAP_MODULES:
                             cap_imports.add(top)
                             if top in _ACTIVE_MODULES:
+                                kinds.add(_import_kind(top))
                                 locations.add_node(_ACTIVE, 0, f.relpath, node)
                 elif isinstance(node, ast.ImportFrom) and node.module:
                     top = node.module.split(".")[0]
                     if top in _CAP_MODULES:
                         cap_imports.add(top)
                         if top in _ACTIVE_MODULES:
+                            kinds.add(_import_kind(top))
                             locations.add_node(_ACTIVE, 0, f.relpath, node)
                 elif isinstance(node, ast.Call):
                     fn = node.func
                     if isinstance(fn, ast.Name) and fn.id in _DYNAMIC:
                         suspicious_calls.append(fn.id)
+                        kinds.add(KIND_DYNAMIC)
                         locations.add_node(_ACTIVE, 0, f.relpath, node)
                     if isinstance(fn, ast.Attribute) and fn.attr in _SUSPICIOUS_ATTRS:
                         suspicious_calls.append(fn.attr)
+                        kinds.update(_call_kinds(node, fn))
                         locations.add_node(_ACTIVE, 0, f.relpath, node)
                 # cmdclass=... hooking install/develop
                 elif isinstance(node, ast.keyword) and node.arg == "cmdclass":
                     has_install_hook = True
                     locations.add_node(_CMDCLASS, 0, f.relpath, node)
 
-            # A build script that pulls in capability modules or executes commands at
-            # install time is high-to-critical risk.
+            # Grade by what the build script actually does (see the kind constants above).
             if suspicious_calls or cap_imports & _ACTIVE_MODULES:
+                severity, weight, confidence, description = _grade(kinds)
                 signals.append(Signal(
-                    Code.INSTALL_HOOK_EXEC, Severity.critical, 12.0,
-                    "setup.py performs active behaviour at install time "
-                    "(network/process/eval) — classic install-time RCE vector",
+                    Code.INSTALL_HOOK_EXEC, severity, weight, description,
                     {"file": f.relpath,
+                     "kinds": sorted(kinds),
                      "capability_imports": sorted(cap_imports),
                      "calls": sorted(set(suspicious_calls))[:8],
                      "locations": locations.evidence(_ACTIVE)},
                     capability=Capability.INSTALL_EXEC,
-                    confidence=CONFIDENCE_ACTIVE, location=locations.first(_ACTIVE),
+                    confidence=confidence, location=locations.first(_ACTIVE),
                 ))
             elif has_install_hook:
                 signals.append(Signal(
