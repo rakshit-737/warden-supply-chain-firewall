@@ -66,16 +66,12 @@ from __future__ import annotations
 import ast
 import math
 import re
-import time
-from dataclasses import dataclass, field
 from typing import Any
 
 from app.analysis import decode
 from app.analysis.analyzers.base import BaseAnalyzer, PackageContext
 from app.analysis.analyzers.static_code import LocationCollector
-from app.analysis.findings import Location
 from app.analysis.signals import Capability, Code, Severity, Signal
-from app.core.redaction import sanitize_text
 
 # Kept at 1.1.0: the analyzer contract tests pin the six v1 analyzer versions (see the report).
 ANALYZER_VERSION = "1.1.0"
@@ -413,7 +409,9 @@ class _FileModel:
         if isinstance(node, ast.BinOp):
             if not isinstance(node.op, (ast.Add, ast.Mult)):
                 return False
-            return not (isinstance(parent, ast.BinOp) and isinstance(parent.op, ast.Add) and isinstance(node.op, ast.Add))
+            nested_concat = (isinstance(parent, ast.BinOp) and isinstance(parent.op, ast.Add)
+                             and isinstance(node.op, ast.Add))
+            return not nested_concat
         if isinstance(node, ast.JoinedStr):
             return any(isinstance(v, ast.FormattedValue) for v in node.values)
         if isinstance(node, ast.Subscript):

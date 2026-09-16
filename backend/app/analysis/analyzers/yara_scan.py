@@ -645,7 +645,8 @@ class YaraScanAnalyzer(BaseAnalyzer):
             failed = sorted({path for path, _ in errors})
             findings.append(_incomplete(
                 "error", "YaraScanError", f"YARA scan failed on {len(failed)} member(s); analysis is incomplete",
-                files=len(failed), examples=failed[:MAX_ERROR_EXAMPLES], error_types=sorted({kind for _, kind in errors}),
+                files=len(failed), examples=failed[:MAX_ERROR_EXAMPLES],
+                error_types=sorted({kind for _, kind in errors}),
             ))
         if unscanned:
             findings.append(_incomplete(
