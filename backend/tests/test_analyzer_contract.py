@@ -352,7 +352,7 @@ def test_obfuscation_survives_parser_bombs():
 # --------------------------------------------------------------------------- typosquat
 @pytest.mark.parametrize(("name", "severity", "weight", "confidence", "distance"), [
     ("c0lorama", Severity.critical, 10.0, 0.9, 0),
-    ("reqeusts", Severity.critical, 9.0, 0.8, 1),
+    ("reqeusts", Severity.critical, 9.0, 0.85, 1),  # distance 1 from a top-500 target
     ("rquest", Severity.high, 6.0, 0.6, 2),
 ])
 def test_typosquat_confidence_by_distance(name, severity, weight, confidence, distance):
