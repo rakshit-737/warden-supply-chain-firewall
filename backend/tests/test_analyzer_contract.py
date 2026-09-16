@@ -69,7 +69,8 @@ def test_registry_holds_the_six_v1_analyzers_as_base_analyzers():
     for analyzer in registry.ALL_ANALYZERS[:6]:
         assert isinstance(analyzer, BaseAnalyzer)
         assert isinstance(analyzer, registry.Analyzer)
-        assert analyzer.version == "1.1.0"
+        # The analyzer declares its own version; findings are stamped with it.
+        assert isinstance(analyzer.version, str) and analyzer.version
         assert analyzer.requires_network is False
         status = analyzer.availability()
         assert status.available is True and status.name == analyzer.name
@@ -436,7 +437,7 @@ def test_findings_are_stampable_and_round_trip_with_stable_ids():
         again = Finding.from_dict(data)
         assert again.finding_id == stamped.finding_id
         assert again.location == stamped.location
-        assert data["analyzer"] == analyzer.name and data["analyzer_version"] == "1.1.0"
+        assert data["analyzer"] == analyzer.name and data["analyzer_version"] == analyzer.version
         assert data["confidence"] == finding.confidence and 0.0 < finding.confidence <= 1.0
         assert data["category"] and data["title"]
         locations = data["evidence"].get("locations")

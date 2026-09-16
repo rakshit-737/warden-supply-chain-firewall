@@ -170,7 +170,8 @@ def test_result_contract_and_finding_stamping():
     assert by_code[Code.NETWORK_EGRESS]["category"] == "capability"
     assert by_code[Code.NETWORK_EGRESS]["title"] == "Network egress capability"
     assert by_code[Code.TYPOSQUAT]["analyzer"] == "typosquat"
-    assert by_code[Code.TYPOSQUAT]["analyzer_version"] == "1.1.0"
+    typosquat = next(a for a in registry.ALL_ANALYZERS if a.name == "typosquat")
+    assert by_code[Code.TYPOSQUAT]["analyzer_version"] == typosquat.version
     assert all(s["finding_id"].startswith("WX-") for s in result.signals)
 
     assert result.risk["method"] == "warden-risk-2.0"
