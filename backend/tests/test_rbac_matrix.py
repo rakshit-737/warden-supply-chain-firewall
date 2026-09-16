@@ -261,6 +261,12 @@ ENDPOINTS: tuple[Endpoint, ...] = (
     )),
     Endpoint("POST", "/policies/{policy_id}/activate", SPEC_TABLE["policy:write"], 200,
              lambda _p: (f"/policies/{_create_policy()}/activate", None)),
+    Endpoint("POST", "/policies/validate", SPEC_TABLE["policy:read"], 200, lambda _p: (
+        "/policies/validate",
+        {"document": {"apiVersion": "warden.dev/v1", "kind": "Policy",
+                      "metadata": {"name": "rbac-check", "environment": "staging"},
+                      "spec": {"thresholds": {"warn": 40, "block": 70}}}},
+    )),
     # --- policy exceptions -----------------------------------------------------------------
     Endpoint("GET", "/policies/exceptions", SPEC_TABLE["policy:read"], 200, _static("/policies/exceptions")),
     Endpoint("POST", "/policies/exceptions", SPEC_TABLE["exception:request"], 201, lambda _p: (
