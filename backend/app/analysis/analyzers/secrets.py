@@ -1247,7 +1247,12 @@ class SecretsAnalyzer(BaseAnalyzer):
             text = masked.decode("latin-1")
             order = order_of.setdefault(relpath, len(order_of))
             for hit in scan_binary_text(text):
-                records.append(_record(hit, relpath=relpath, order=order, context="binary", byte_offset=hit.start))
+                # Classify by path first: a key under tests/certs is a test fixture, not a
+                # production credential. "binary" is only the fallback for ordinary members.
+                path_context = classify_context(relpath)
+                member_context = path_context if path_context != "runtime" else "binary"
+                records.append(_record(hit, relpath=relpath, order=order, context=member_context,
+                                       byte_offset=hit.start))
 
     # ------------------------------------------------------------------ gitleaks pass
     def _gitleaks(self, ctx: PackageContext, status: ToolStatus, timeout: float, records: list[_Record],

@@ -137,8 +137,10 @@ def test_ml_can_never_lower_the_deterministic_score(monkeypatch, fusion):
 def test_ml_can_raise_the_score_and_feeds_anomaly(monkeypatch):
     monkeypatch.setattr(scoring, "get_model_store", lambda: _Model(True, ml=90, anomaly=0.3))
     breakdown = assess([_f(Code.NETWORK_EGRESS, Severity.low, 1.5, 0.5)], intel_status=OK)
-    assert breakdown.malicious_risk == 90
-    assert breakdown.final_score == 90
+    # Bounded escalation: with only a support-weight finding the rules score 6, so the
+    # model's 90 is capped at rule + ML_ESCALATION_MARGIN (scoring.fuse).
+    assert breakdown.malicious_risk == 6 + scoring.ML_ESCALATION_MARGIN
+    assert breakdown.final_score == 6 + scoring.ML_ESCALATION_MARGIN
     assert breakdown.dimensions["anomaly"].score == 30
     assert breakdown.confidence == 0.6
 

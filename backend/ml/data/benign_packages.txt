@@ -1,0 +1,52 @@
+# Widely-used PyPI projects measured as benign reference data for model training.
+# Chosen for breadth of legitimate behaviour: HTTP clients that ship TLS test fixtures,
+# CLIs that spawn processes, SDKs that read credential environment variables, packages with
+# compiled extensions, and pure-library code. One project per line; comments start with '#'.
+requests
+urllib3
+certifi
+idna
+charset-normalizer
+httpx
+flask
+jinja2
+werkzeug
+click
+itsdangerous
+django
+fastapi
+starlette
+pydantic
+sqlalchemy
+alembic
+numpy
+pandas
+scipy
+pillow
+cryptography
+pyyaml
+rich
+setuptools
+wheel
+packaging
+six
+python-dateutil
+pytz
+boto3
+botocore
+s3transfer
+paramiko
+psutil
+gitpython
+docker
+pytest
+coverage
+black
+virtualenv
+protobuf
+attrs
+jsonschema
+tomli
+typing-extensions
+filelock
+platformdirs

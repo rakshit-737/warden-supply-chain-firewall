@@ -447,13 +447,17 @@ def test_evaluation_rejects_invalid_input(y, p):
 # =========================================================================== training
 @pytest.fixture(scope="module")
 def trained(tmp_path_factory):
+    # Pinned to the synthetic dataset: these assertions are about the synthetic evaluation
+    # scope. Mixing in the measured corpus is covered separately below.
     out = tmp_path_factory.mktemp("ml-train-a")
-    return out, train(n=700, seed=11, artifact_dir=out, config=TINY, trained_at=FIXED_TIME)
+    return out, train(n=700, seed=11, artifact_dir=out, config=TINY, trained_at=FIXED_TIME,
+                      dataset=SyntheticDataset(n=700, seed=11))
 
 
 def test_training_is_deterministic_for_the_same_seed(trained, tmp_path):
     out_a, meta_a = trained
-    meta_b = train(n=700, seed=11, artifact_dir=tmp_path, config=TINY, trained_at=FIXED_TIME)
+    meta_b = train(n=700, seed=11, artifact_dir=tmp_path, config=TINY, trained_at=FIXED_TIME,
+                   dataset=SyntheticDataset(n=700, seed=11))
     assert meta_b["model_version"] == meta_a["model_version"]
     assert (tmp_path / "model.joblib").read_bytes() == (out_a / "model.joblib").read_bytes()
     for key in ("evaluation", "feature_importances", "reference_distribution", "anomaly_reference", "dataset"):
@@ -579,3 +583,35 @@ def test_bins_are_upper_inclusive_and_psi_validates_shapes():
         F.population_stability_index([0.5, 0.5], [1.0])
     with pytest.raises(ValueError):
         F.reference_bins([])
+
+
+def test_measured_negatives_are_mixed_in_and_labelled_honestly(tmp_path):
+    """Training with measured real-world rows must say so in the evaluation scope label."""
+    import numpy as np
+
+    from ml.datasets import LoadedDataset, MixedDataset, SyntheticDataset
+
+    class _FakeMeasured:
+        name = "measured-benign"
+        synthetic = False
+
+        def available(self) -> bool:
+            return True
+
+        def describe(self) -> dict:
+            return {"name": self.name, "synthetic": False, "rows": 8}
+
+        def load(self) -> LoadedDataset:
+            rows = np.zeros((8, len(F.FEATURE_ORDER)), dtype=float)
+            rows[:, F.FEATURE_ORDER.index("network_egress")] = 1.0
+            return LoadedDataset(X=rows, y=np.zeros(8, dtype=int), groups=tuple(["measured_benign"] * 8),
+                                 info={"name": "measured-benign", "rows": 8})
+
+    dataset = MixedDataset(SyntheticDataset(n=400, seed=5), _FakeMeasured(), measured_weight=10.0)
+    loaded = dataset.load()
+    assert loaded.sample_weight is not None and loaded.sample_weight.max() == 10.0
+    assert "measured_benign" in set(loaded.groups or ())
+
+    meta = train(n=400, seed=5, artifact_dir=tmp_path, config=TINY, trained_at=FIXED_TIME, dataset=dataset)
+    assert meta["evaluation"]["label"] == E.MIXED_LABEL
+    assert "not real-world detection performance" in meta["evaluation"]["label"]

@@ -109,7 +109,8 @@ def _benign_background(rng: Rng, row: Row) -> None:
     _maybe(rng, row, "typosquat_distance", 0.02, 0.6)  # legitimate names close to popular ones
     _maybe(rng, row, "shell_invocation", 0.05, lambda: _conf(rng, 0.2, 0.65))
     _maybe(rng, row, "string_reconstruction", 0.03, lambda: _conf(rng, 0.25, 0.55))
-    _maybe(rng, row, "secrets_count", 0.05, lambda: _pick(rng, [0.5, 1.0, 2.0], [0.6, 0.3, 0.1]))  # test fixtures
+    # test fixtures (certificates, sample credentials) shipped inside the sdist
+    _maybe(rng, row, "secrets_count", 0.08, lambda: _pick(rng, [0.5, 1.0, 2.0, 3.0], [0.5, 0.25, 0.15, 0.1]))
     _maybe(rng, row, "binary_executable", 0.04, lambda: _conf(rng, 0.35, 0.6))
     _maybe(rng, row, "nested_archive", 0.04, 0.5)
     _maybe(rng, row, "yanked_release", 0.02, 0.95)
@@ -130,8 +131,23 @@ def _benign_sdk(rng: Rng) -> Row:
     _put(row, "network_egress", 1.0)
     _maybe(rng, row, "env_harvest", 0.55, 1.0)
     _put(row, "dangerous_import_count", _pick(rng, [1, 2, 3], [0.5, 0.35, 0.15]))
-    _maybe(rng, row, "secrets_count", 0.25, lambda: _pick(rng, [0.5, 1.0, 2.0], [0.5, 0.35, 0.15]))
+    _maybe(rng, row, "secrets_count", 0.25, lambda: _pick(rng, [0.5, 1.0, 2.0, 3.0], [0.4, 0.3, 0.2, 0.1]))
     _maybe(rng, row, "has_repo_url", 0.9, 1.0)
+    return row
+
+
+def _benign_test_fixtures(rng: Rng) -> Row:
+    """Hard negative: HTTP/TLS libraries ship certificate and key fixtures in their test suite.
+
+    Real examples (requests, urllib3, aiohttp) carry several PEM private keys under tests/,
+    which secret detection reports at a test-context discount. Without this family the model
+    learns "any secret means malicious" and flags those libraries as critical.
+    """
+    row = _benign_library(rng)
+    _put(row, "network_egress", 1.0)
+    _put(row, "secrets_count", _pick(rng, [2.0, 3.0, 4.0, 5.5, 7.0], [0.25, 0.3, 0.2, 0.15, 0.1]))
+    _maybe(rng, row, "dangerous_import_count", 0.7, lambda: _pick(rng, [1, 2, 3], [0.5, 0.3, 0.2]))
+    _maybe(rng, row, "nested_archive", 0.15, 0.5)
     return row
 
 
@@ -351,8 +367,9 @@ def _takeover_drift(rng: Rng) -> Row:
 
 # name -> (label, sampler, relative weight within its class)
 BENIGN_FAMILIES: dict[str, tuple[Callable[[Rng], Row], float]] = {
-    "benign_library": (_benign_library, 0.32),
+    "benign_library": (_benign_library, 0.26),
     "benign_sdk_env_network": (_benign_sdk, 0.12),
+    "benign_test_fixtures": (_benign_test_fixtures, 0.06),
     "benign_cli_subprocess": (_benign_cli, 0.12),
     "benign_namespace_pth": (_benign_namespace_pth, 0.08),
     "benign_compiled_extension": (_benign_compiled, 0.12),

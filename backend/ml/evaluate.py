@@ -36,12 +36,17 @@ import numpy as np
 
 SYNTHETIC_LABEL = "synthetic hold-out evaluation - not real-world performance"
 LABELLED_LABEL = "labelled-dataset hold-out evaluation - representative only of that dataset"
+MIXED_LABEL = ("synthetic hold-out evaluation with measured real-world negatives - "
+               "not real-world detection performance")
 DEFAULT_THRESHOLD = 0.5
 DEFAULT_THRESHOLDS: tuple[float, ...] = tuple(round(0.1 * i, 1) for i in range(1, 10))
 CALIBRATION_BINS = 10
 
 
-def label_for(synthetic: bool) -> str:
+def label_for(synthetic: bool, *, kind: str | None = None) -> str:
+    """Describe the scope of a hold-out result so no number is read as a field measurement."""
+    if kind == "mixed":
+        return MIXED_LABEL
     return SYNTHETIC_LABEL if synthetic else LABELLED_LABEL
 
 
@@ -188,13 +193,14 @@ def evaluate_predictions(
     *,
     groups: Sequence[str] | None = None,
     synthetic: bool = True,
+    kind: str | None = None,
     threshold: float = DEFAULT_THRESHOLD,
     thresholds: Sequence[float] = DEFAULT_THRESHOLDS,
 ) -> dict[str, Any]:
     y, p = _as_arrays(y_true, proba)
     counts = confusion_counts(y, (p >= threshold).astype(int))
     return {
-        "label": label_for(synthetic),
+        "label": label_for(synthetic, kind=kind),
         "threshold": float(threshold),
         "metrics": classification_metrics(y, p, threshold=threshold),
         "confusion_matrix": {

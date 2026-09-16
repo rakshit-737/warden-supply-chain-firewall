@@ -42,7 +42,13 @@ import numpy as np
 
 from app.analysis.features import FEATURE_ORDER, FEATURE_SET_VERSION, feature_schema_hash, reference_bins
 from ml import evaluate as evaluation
-from ml.datasets import CSVLabeledDataset, Dataset, SyntheticDataset
+from ml.datasets import (
+    CSVLabeledDataset,
+    Dataset,
+    MeasuredBenignDataset,
+    MixedDataset,
+    SyntheticDataset,
+)
 from ml.model_card import write_model_card
 
 ARTIFACT_DIR = Path(__file__).resolve().parent.parent / "app" / "analysis" / "artifacts"
@@ -134,6 +140,15 @@ def _sorted_scores(pairs: dict[str, float]) -> dict[str, float]:
     return dict(sorted(pairs.items(), key=lambda kv: (-kv[1], kv[0])))
 
 
+
+def default_dataset(*, n: int, seed: int, measured: bool = True) -> Dataset:
+    """Synthetic samples, mixed with measured real-world negatives when they are available."""
+    synthetic = SyntheticDataset(n=n, seed=seed)
+    part = MeasuredBenignDataset()
+    if measured and part.available():
+        return MixedDataset(synthetic, part)
+    return synthetic
+
 def train(
     n: int = 6000,
     seed: int = 1337,
@@ -155,7 +170,7 @@ def train(
     config = config or TrainConfig()
     jobs = _resolve_jobs(config.n_jobs)
     started = time.monotonic()
-    dataset = dataset if dataset is not None else SyntheticDataset(n=n, seed=seed)
+    dataset = dataset if dataset is not None else default_dataset(n=n, seed=seed)
     loaded = dataset.load()
     X = np.asarray(loaded.X, dtype=float)
     y = np.asarray(loaded.y, dtype=int)
@@ -168,6 +183,11 @@ def train(
     )
     X_train, X_test, y_train, y_test = X[train_idx], X[test_idx], y[train_idx], y[test_idx]
     groups_test = [loaded.groups[i] for i in test_idx] if loaded.groups is not None else None
+    # Measured real-world rows are few next to the synthetic ones and carry a training weight,
+    # so the model cannot dismiss them as noise.
+    weights_train = None
+    if loaded.sample_weight is not None:
+        weights_train = np.asarray(loaded.sample_weight, dtype=float)[train_idx]
 
     # Every estimator predicts single-threaded: a parallel forest adds per-tree probabilities in thread
     # completion order, and those last-bit differences leak into the isotonic calibrators (and so into the
@@ -182,7 +202,10 @@ def train(
         cv=StratifiedKFold(n_splits=config.calibration_folds, shuffle=True, random_state=seed),
     )
     with parallel_config(backend="threading"):
-        clf.fit(X_train, y_train)
+        if weights_train is not None:
+            clf.fit(X_train, y_train, sample_weight=weights_train)
+        else:
+            clf.fit(X_train, y_train)
     positive = list(clf.classes_).index(1)
 
     benign_train = X_train[y_train == 0]
@@ -198,7 +221,8 @@ def train(
     }
 
     proba = clf.predict_proba(X_test)[:, positive]
-    report = evaluation.evaluate_predictions(y_test, proba, groups=groups_test, synthetic=dataset.synthetic)
+    report = evaluation.evaluate_predictions(y_test, proba, groups=groups_test, synthetic=dataset.synthetic,
+                                            kind=getattr(dataset, "kind", None))
 
     base_forests = [member.estimator for member in clf.calibrated_classifiers_]
     impurity = np.mean([f.feature_importances_ for f in base_forests], axis=0)
@@ -293,12 +317,15 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Train the Warden behaviour model (synthetic data by default).")
     ap.add_argument("--n", type=int, default=6000, help="synthetic samples to generate")
     ap.add_argument("--seed", type=int, default=1337)
+    ap.add_argument("--no-measured", action="store_true",
+                    help="train on synthetic samples only, ignoring ml/data/real_benign_features.csv")
     ap.add_argument("--csv", type=Path, default=None, help="labelled CSV (FEATURE_ORDER + label) instead of synthetic")
     ap.add_argument("--artifact-dir", type=Path, default=ARTIFACT_DIR)
     ap.add_argument("--n-estimators", type=int, default=TrainConfig.n_estimators)
     args = ap.parse_args()
 
-    dataset: Dataset = CSVLabeledDataset(args.csv) if args.csv else SyntheticDataset(n=args.n, seed=args.seed)
+    dataset: Dataset = (CSVLabeledDataset(args.csv) if args.csv
+                        else default_dataset(n=args.n, seed=args.seed, measured=not args.no_measured))
     meta = train(n=args.n, seed=args.seed, dataset=dataset, artifact_dir=args.artifact_dir,
                  config=TrainConfig(n_estimators=args.n_estimators))
     report = meta["evaluation"]

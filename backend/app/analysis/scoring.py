@@ -65,6 +65,11 @@ _PRIMARY_CODES = {
 # contribution is capped: they raise suspicion to "medium" but cannot alone reach "high".
 # This is the key control that keeps precision high on large benign packages (e.g. numpy).
 _SUPPORT_CAP = 9.0
+
+# Above this rule score the deterministic layer has real evidence, and the model is allowed
+# to raise the verdict freely. Below it, the model may add at most ML_ESCALATION_MARGIN.
+ML_TRUSTED_RULE_SCORE = 35
+ML_ESCALATION_MARGIN = 25
 SUPPORT_CAP = _SUPPORT_CAP
 
 # Dimensions scored elsewhere and excluded from the behavioural rule score.
@@ -171,13 +176,25 @@ def rule_contributions(signals: Iterable[Signal | Mapping[str, Any]]) -> list[di
 
 
 def fuse(rule_score: int, ml_score: int, ml_available: bool, mode: str | None = None) -> int:
-    """Fuse rule and ML scores; the result is never below ``rule_score``."""
+    """Fuse rule and ML scores; the result is never below ``rule_score``.
+
+    The model may sharpen a verdict the deterministic rules already support, but it may not
+    create one on its own. Its training distribution is mostly synthetic, and measurements on
+    real packages showed it scoring ordinary libraries (whose only traits were a network
+    import and test-fixture credentials) as malicious. So when the rules see little
+    (``rule_score`` below :data:`ML_TRUSTED_RULE_SCORE`) the model can add at most
+    :data:`ML_ESCALATION_MARGIN` points. That keeps a model-only opinion inside the
+    medium band, where it prompts review rather than blocking a build, while leaving the
+    model free to escalate once real evidence exists.
+    """
     if not ml_available:
-        risk = rule_score
-    elif (mode or settings.SCORE_FUSION) == "mean":
+        return int(max(0, min(100, rule_score)))
+    if (mode or settings.SCORE_FUSION) == "mean":
         risk = max(rule_score, round((rule_score + ml_score) / 2))
     else:  # "max" — conservative default
         risk = max(rule_score, ml_score)
+    if rule_score < ML_TRUSTED_RULE_SCORE:
+        risk = min(risk, rule_score + ML_ESCALATION_MARGIN)
     return int(max(0, min(100, risk)))
 
 

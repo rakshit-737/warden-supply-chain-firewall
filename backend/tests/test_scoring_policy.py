@@ -1,3 +1,4 @@
+from app.analysis import scoring
 from app.analysis.orchestrator import AnalysisResult
 from app.analysis.scoring import compute_rule_score, score
 from app.analysis.signals import Capability, Code, Severity, Signal
@@ -88,7 +89,10 @@ def test_ml_inference_is_timed_only_when_a_model_is_available(monkeypatch):
     assert timed == []  # the rules-only fallback is not an inference
     monkeypatch.setattr(scoring, "get_model_store", lambda: _Model(True))
     result = score([], _Ctx())
-    assert timed == ["inference"] and result.ml_score == 40 and result.risk_score == 40
+    # The model ran and is reported, but with no rule evidence its escalation is bounded
+    # (see scoring.ML_ESCALATION_MARGIN).
+    assert timed == ["inference"] and result.ml_score == 40
+    assert result.risk_score == min(40, scoring.ML_ESCALATION_MARGIN)
 
 
 def _result(risk, caps=None, name="pkg", signals=None):
@@ -160,3 +164,20 @@ def test_missing_policy_row_uses_the_default_policy():
 def test_allowlisted_package_with_high_score_is_allowed_without_ioc():
     d = evaluate(_result(95, caps=[], name="Pkg_Name"), _policy(allowlist=["pkg-name"], blocked_capabilities=[]))
     assert d.decision == Decision.allow and d.matched_rules == ["allowlist"]
+
+
+def test_the_model_cannot_create_a_verdict_the_rules_do_not_support():
+    """A model-only opinion is capped into the medium band; it must not block a build alone."""
+    capped = scoring.fuse(rule_score=5, ml_score=99, ml_available=True)
+    assert capped == 5 + scoring.ML_ESCALATION_MARGIN
+    assert scoring.severity_for(capped) is not Severity.critical
+
+
+def test_the_model_may_escalate_once_the_rules_have_evidence():
+    supported = scoring.fuse(rule_score=scoring.ML_TRUSTED_RULE_SCORE, ml_score=95, ml_available=True)
+    assert supported == 95
+
+
+def test_fusion_never_lowers_the_rule_score():
+    assert scoring.fuse(rule_score=70, ml_score=0, ml_available=True) == 70
+    assert scoring.fuse(rule_score=70, ml_score=0, ml_available=True, mode="mean") == 70

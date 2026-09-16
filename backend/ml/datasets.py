@@ -44,6 +44,8 @@ class LoadedDataset:
     y: np.ndarray
     groups: tuple[str, ...] | None
     info: dict[str, Any] = field(default_factory=dict)
+    # Per-row training weight; None means every row counts once.
+    sample_weight: np.ndarray | None = None
 
 
 @runtime_checkable
@@ -273,3 +275,102 @@ __all__ = [
     "generator_hash",
     "normalized_sha256",
 ]
+
+
+DEFAULT_MEASURED_PATH = Path(__file__).resolve().parent / "data" / "real_benign_features.csv"
+MEASURED_GROUP = "measured_benign"
+DEFAULT_MEASURED_WEIGHT = 25.0
+
+
+class MeasuredBenignDataset:
+    """Feature vectors measured by Warden's analyzers on established PyPI projects.
+
+    Produced by ``python -m ml.collect_real_features``. Rows are labelled benign because the
+    list is a curated set of long-established projects - an assumption, not a verified fact
+    about a particular release, and stated as such in the CSV header and docs/ML_MODEL.md.
+    """
+
+    name = "measured-benign"
+    synthetic = False
+
+    def __init__(self, path: Path | str = DEFAULT_MEASURED_PATH) -> None:
+        self.path = Path(path)
+
+    def available(self) -> bool:
+        return self.path.is_file()
+
+    def describe(self) -> dict[str, Any]:
+        return {"name": self.name, "synthetic": False, "path": self.path.name,
+                "feature_set_version": FEATURE_SET_VERSION}
+
+    def load(self) -> LoadedDataset:
+        raw = self.path.read_bytes()
+        if len(raw) > MAX_CSV_BYTES:
+            raise DatasetValidationError(f"{self.path.name} exceeds {MAX_CSV_BYTES} bytes")
+        lines = [ln for ln in raw.decode("utf-8").splitlines() if not ln.startswith("#")]
+        reader = csv.DictReader(lines)
+        missing = [c for c in (*FEATURE_ORDER, "label") if c not in (reader.fieldnames or [])]
+        if missing:
+            raise DatasetValidationError(f"{self.path.name} is missing columns: {', '.join(missing)}")
+        rows, packages, errors = [], [], []
+        for number, row in enumerate(reader, start=2):
+            try:
+                values = [float(row[name]) for name in FEATURE_ORDER]
+                label = int(float(row["label"]))
+            except (TypeError, ValueError) as exc:
+                errors.append(f"line {number}: {exc}")
+                if len(errors) >= MAX_REPORTED_ERRORS:
+                    break
+                continue
+            if label != 0:
+                errors.append(f"line {number}: measured rows must be labelled benign (0)")
+                continue
+            rows.append(values)
+            packages.append(str(row.get("package", "")))
+        if errors:
+            raise DatasetValidationError("; ".join(errors))
+        if not rows:
+            raise DatasetValidationError(f"{self.path.name} contains no usable rows")
+        X = np.asarray(rows, dtype=float)
+        info = self.describe()
+        info.update({"rows": len(rows), "packages": packages, "sha256": normalized_sha256(raw)})
+        return LoadedDataset(X=X, y=np.zeros(len(rows), dtype=int), groups=tuple([MEASURED_GROUP] * len(rows)),
+                             info=info)
+
+
+class MixedDataset:
+    """Synthetic samples plus measured real-world negatives.
+
+    The measured rows are few (tens) next to thousands of synthetic ones, so training weights
+    them with ``measured_weight``; without that, a handful of real vectors cannot correct a
+    model that has learned a synthetic-only notion of "benign".
+    """
+
+    name = "synthetic+measured"
+    synthetic = False  # partly synthetic: evaluation labels the scope from the parts
+    kind = "mixed"
+
+    def __init__(self, synthetic_part: Any, measured_part: Any,
+                 measured_weight: float = DEFAULT_MEASURED_WEIGHT) -> None:
+        self.synthetic_part = synthetic_part
+        self.measured_part = measured_part
+        self.measured_weight = float(measured_weight)
+
+    def describe(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "synthetic": False,
+            "parts": [self.synthetic_part.describe(), self.measured_part.describe()],
+            "measured_weight": self.measured_weight,
+        }
+
+    def load(self) -> LoadedDataset:
+        first, second = self.synthetic_part.load(), self.measured_part.load()
+        X = np.vstack([first.X, second.X])
+        y = np.concatenate([first.y, second.y])
+        groups = tuple([*(first.groups or ("synthetic",) * len(first.y)), *(second.groups or ())])
+        weights = np.concatenate([np.ones(len(first.y)), np.full(len(second.y), self.measured_weight)])
+        info = self.describe()
+        info.update({"rows": int(len(y)), "positives": int(y.sum()), "measured_rows": int(len(second.y)),
+                     "synthetic_info": first.info, "measured_info": second.info})
+        return LoadedDataset(X=X, y=y, groups=groups, info=info, sample_weight=weights)
