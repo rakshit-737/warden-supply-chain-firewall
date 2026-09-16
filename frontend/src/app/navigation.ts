@@ -47,7 +47,14 @@ export const NAV_SECTIONS: readonly NavSection[] = [
       { to: "/audit", label: "Audit", permission: P.AUDIT_READ },
     ],
   },
-  { id: "system", label: "System", items: [{ to: "/system", label: "System", permission: P.SYSTEM_READ }] },
+  {
+    id: "administration",
+    label: "Administration",
+    items: [
+      { to: "/users", label: "Users", permission: P.USER_MANAGE },
+      { to: "/system", label: "System", permission: P.SYSTEM_READ },
+    ],
+  },
 ];
 
 export interface PlannedSection {
@@ -90,33 +97,9 @@ export const PLANNED_SECTIONS: readonly PlannedSection[] = [
     permission: P.SCAN_READ,
   },
   {
-    path: "events",
-    title: "Events",
-    summary: "Security events such as blocked packages, new vulnerabilities and behaviour drift, with acknowledgement.",
-    permission: P.EVENT_READ,
-  },
-  {
     path: "monitoring",
     title: "Monitoring",
     summary: "Packages watched for new releases and changes in risk.",
     permission: P.MONITOR_READ,
-  },
-  {
-    path: "exceptions",
-    title: "Exceptions",
-    summary: "Time-boxed policy exceptions and their request and approval workflow.",
-    permission: P.POLICY_READ,
-  },
-  {
-    path: "audit",
-    title: "Audit",
-    summary: "The append-only audit trail and verification of its hash chain.",
-    permission: P.AUDIT_READ,
-  },
-  {
-    path: "system",
-    title: "System",
-    summary: "Deployment configuration, analysis tool availability and model information.",
-    permission: P.SYSTEM_READ,
   },
 ];

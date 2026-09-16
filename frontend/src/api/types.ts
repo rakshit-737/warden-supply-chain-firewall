@@ -116,13 +116,20 @@ export interface ApiErrorBody {
 // Auth and users
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * A user account (backend `schemas/user.py` UserOut), returned by GET /auth/me, GET /users,
+ * PATCH /users/{id} and POST /auth/register. The server never includes the password hash or any
+ * token in it.
+ */
 export interface User {
   id: string;
+  /** Stored lower case. */
   email: string;
+  /** A Warden X server returns the canonical name; a v1 server may still return analyst or viewer. */
   role: Role;
   is_active: boolean;
   created_at: string;
-  /** Effective permissions computed by a Warden X server (informational; absent on v1). */
+  /** Effective permissions of the role (informational; the server enforces them). Absent on v1. */
   permissions?: string[];
 }
 
@@ -132,15 +139,29 @@ export interface TokenResponse {
   expires_in: number;
 }
 
-export interface UserUpdate {
+/**
+ * Body of PATCH /users/{id} (user:manage). At least one field is required and unknown fields are
+ * rejected. The server answers 409 with code "last_admin" when the change would leave no active admin.
+ */
+export type UserUpdate = { role: UserRole; is_active?: boolean } | { role?: UserRole; is_active: boolean };
+
+/**
+ * Body of POST /auth/register (user:manage, backend `schemas/auth.py` RegisterRequest). Unknown
+ * fields are rejected; the server lower-cases the email and answers 409 when it is already taken.
+ */
+export interface UserRegistration {
+  email: string;
+  /** 12 to 256 characters, counted as Unicode code points. */
+  password: string;
+  /** The server defaults to read_only. */
   role?: UserRole;
-  is_active?: boolean;
 }
 
+/** GET /users query. The server orders users by creation time, then email. */
 export interface ListUsersParams extends PageParams {
   role?: UserRole;
   is_active?: boolean;
-  /** Case-insensitive email substring. */
+  /** Case-insensitive email substring, at most 320 characters. */
   q?: string;
 }
 
@@ -434,53 +455,78 @@ export interface PolicyValidationResult {
   errors: { path?: string | null; message: string }[];
 }
 
-/** "expired" is reported by the server for a pending/approved exception past expires_at. */
+// Policy exceptions: backend app/schemas/exception.py and app/api/routers/policies.py.
+
+/**
+ * Effective exception status (backend `ExceptionStatusOut`). "expired" is never stored: the server
+ * reports it for a pending or approved exception whose expires_at has passed. Consequently an
+ * "approved" exception is always one still in force (`active` is true exactly when status is
+ * "approved"), and there is no separate "active" status or filter.
+ */
 export const EXCEPTION_STATUSES = ["pending", "approved", "rejected", "revoked", "expired"] as const;
 export type ExceptionStatus = (typeof EXCEPTION_STATUSES)[number];
 
+/** Backend `ExceptionOut`: list items and the response of every transition. */
 export interface PolicyException {
   id: string;
   /** null = global exception (applies to every policy). */
   policy_id: string | null;
+  /** PEP 503-normalised package name. */
   package: string;
+  /** Normalised PEP 440 specifier set, or null for every version. */
   version_spec: string | null;
+  /** Upper-case finding codes. */
   codes: string[];
+  /** Finding categories (FINDING_CATEGORIES values). */
   categories: string[];
+  /** null = every environment. */
   environment: string | null;
   justification: string;
   requested_by: string;
   /** Who approved or rejected the request. */
   approved_by: string | null;
-  revoked_by?: string | null;
+  /** Who revoked or withdrew the exception. */
+  revoked_by: string | null;
   status: ExceptionStatus;
   /** True only when approved and not expired. */
-  active?: boolean;
+  active: boolean;
   expires_at: string;
   created_at: string;
+  /** When the request was approved or rejected. */
   decided_at: string | null;
-  revoked_at?: string | null;
+  revoked_at: string | null;
 }
 
-/** Optional body for approve / reject / revoke. */
+/** Backend `ExceptionTransition`: optional body of approve / reject / revoke (comment at most 500 characters). */
 export interface ExceptionTransition {
   comment?: string | null;
 }
 
+/**
+ * Backend `ExceptionCreate` (unknown fields are rejected). The server normalises the package name and
+ * version specifier, and requires expires_at in the future and at most 365 days ahead.
+ */
 export interface PolicyExceptionCreate {
   package: string;
   version_spec?: string | null;
   codes?: string[];
   categories?: string[];
-  environment?: string | null;
+  /** Omit for a global exception. When given, `environment` must match the policy's environment. */
   policy_id?: string | null;
+  /** Omit to apply in every environment. */
+  environment?: Environment | null;
   justification: string;
+  /** ISO 8601 date-time. */
   expires_at: string;
 }
 
+/** Query of GET /policies/exceptions (newest first). */
 export interface ListExceptionsParams extends PageParams {
   status?: ExceptionStatus;
+  /** Exact package name, matched after PEP 503 normalisation. An invalid name is rejected with 422. */
   package?: string;
   policy_id?: string;
+  /** Exact environment match: global exceptions (no environment) are not included. */
   environment?: Environment;
 }
 
@@ -656,28 +702,43 @@ export interface GraphAnalysis {
 // Events (SPEC section 7)
 // ---------------------------------------------------------------------------------------------
 
+/** GET /events item and POST /events/{id}/ack response (backend `schemas/event.py` EventOut). */
 export interface SecurityEvent {
+  /** UUID. */
   id: string;
-  /** One of EVENT_TYPES; typed as string so an unknown future type does not break parsing. */
+  /** One of EVENT_TYPES; typed as string (as in the schema) so a future type does not break parsing. */
   type: string;
-  severity: Severity;
+  /**
+   * The schema types this as a plain string. The event bus only writes SEVERITIES values
+   * (`events/types.py` coerce_severity), but views must still guard it (lib/risk isSeverity).
+   */
+  severity: string;
+  /** Attacker-influenced (package names); sanitised and capped at 200 characters by the server. */
   title: string;
+  /** PEP 503-normalised package name, when the event concerns one. */
   package: string | null;
   version: string | null;
   project_id: string | null;
   scan_id: string | null;
+  /** Sanitised by the server (`sanitize_evidence`); {} when none were recorded. Render as text only. */
   details: Record<string, unknown>;
   created_at: string;
   acknowledged: boolean;
+  /** UUID of the acknowledging user. */
   acknowledged_by: string | null;
   acknowledged_at: string | null;
 }
 
+/** GET /events query. Results are newest first; limit is 1-200 (default 50), offset 0-1,000,000. */
 export interface ListEventsParams extends PageParams {
+  /** Sent as `type`; the server also accepts the upper-case member name. */
   type?: EventType;
   severity?: Severity;
+  /** Exact package name (normalised by the server before matching), at most 214 characters. */
   package?: string;
+  /** UUID. */
   project_id?: string;
+  /** ISO 8601 date-time: events created at or after it. */
   since?: string;
   acknowledged?: boolean;
 }
@@ -849,31 +910,43 @@ export type ContainerScanCreate =
 // Audit, system and ML (SPEC sections 5 and 13)
 // ---------------------------------------------------------------------------------------------
 
+/** GET /audit item (backend `schemas/audit.py` AuditEventOut; `metadata_` is serialised as `metadata`). */
 export interface AuditEvent {
+  /** UUID. */
   id: string;
+  /** UUID of the acting user; null for actions without a signed-in actor (e.g. failed logins). */
   actor_id: string | null;
+  /** Dotted action name such as "policy.update" (at most 80 characters). */
   action: string;
   target_type: string | null;
+  /** Can hold attacker-influenced text (for scan.create: "package==version"). */
   target_id: string | null;
+  /** Sanitised by the server; {} when none were recorded. Render as text only. */
   metadata: Record<string, unknown>;
   request_id: string | null;
   created_at: string;
-  // Warden X hash chain (optional for v1 backends).
-  seq?: number | null;
-  prev_hash?: string | null;
-  event_hash?: string | null;
+  // Hash chain. Always serialised by the server; null only for rows written outside the chain.
+  seq: number | null;
+  prev_hash: string | null;
+  event_hash: string | null;
 }
 
+/** GET /audit query. Results are ordered by seq, newest first; limit is 1-200 (default 50). */
 export interface ListAuditParams extends PageParams {
+  /** Exact action name, at most 80 characters. */
   action?: string;
+  /** UUID. */
   actor_id?: string;
+  /** Exact target type, at most 40 characters. */
   target_type?: string;
 }
 
 /** GET /audit/verify. ok=false identifies the first broken event of the hash chain. */
 export interface AuditVerifyResult {
   ok: boolean;
+  /** Events verified before the first break (all events when ok). */
   checked: number;
+  /** null when ok, and also when the chain is broken without a specific event (unchained rows). */
   first_broken_seq: number | null;
   reason: string | null;
   /** Last verified event; anchor it outside the database to detect truncation. */
@@ -882,21 +955,61 @@ export interface AuditVerifyResult {
   verified_at: string;
 }
 
+/** GET /system/info `features` (backend api/routers/system.py `system_info`). */
+export interface SystemFeatures {
+  intel: { enabled: boolean; offline: boolean; nvd_enabled: boolean };
+  provenance: boolean;
+  monitoring: boolean;
+  sandbox: boolean;
+  /** token_required is true when METRICS_TOKEN is set (the token itself is never reported). */
+  metrics: { enabled: boolean; token_required: boolean };
+  /** active: tracing is enabled and the OpenTelemetry API could be loaded. */
+  tracing: { enabled: boolean; active: boolean };
+  analyze_wheels: boolean;
+  sbom_resolve_transitive: boolean;
+  /** Configuration switches only; whether each tool is installed is reported by GET /system/tools. */
+  external_tools_enabled: { yara: boolean; semgrep: boolean; gitleaks: boolean };
+}
+
+/** GET /system/info `limits`: byte sizes, counts, per-minute rates and seconds. */
+export interface SystemLimits {
+  max_request_body_bytes: number;
+  rate_limit_per_minute: number;
+  auth_rate_limit_per_minute: number;
+  max_download_bytes: number;
+  max_extracted_bytes: number;
+  max_extracted_files: number;
+  max_analyzed_file_bytes: number;
+  max_metadata_bytes: number;
+  max_manifest_bytes: number;
+  max_project_components: number;
+  max_graph_nodes: number;
+  scan_timeout_seconds: number;
+  analyzer_timeout_seconds: number;
+  analyzer_workers: number;
+  tool_timeout_seconds: number;
+}
+
+export interface SystemRuntime {
+  /** "redis", or "in_process" when the server fell back to per-process caches and rate limits. */
+  cache_backend: string;
+  trusted_proxies_configured: boolean;
+}
+
 /**
- * GET /system/info: versions, feature switches and enforced limits only (the server does not
- * include secrets or connection strings). Every field is optional because the object grows with
- * the deployment's features.
+ * GET /system/info (system:read): versions, feature switches and enforced limits. The server never
+ * includes secrets, connection strings or filesystem paths. A server of another version can differ,
+ * so views read this through runtime guards (features/system/systemInfo.ts).
  */
 export interface SystemInfo {
-  name?: string;
-  version?: string;
-  /** Deployment environment name, e.g. "production". */
-  env?: string;
-  analyzer_version?: string;
-  features?: Record<string, unknown>;
-  limits?: Record<string, number>;
-  runtime?: Record<string, unknown>;
-  [key: string]: unknown;
+  name: string;
+  version: string;
+  /** development | staging | production | test */
+  env: string;
+  analyzer_version: string;
+  features: SystemFeatures;
+  limits: SystemLimits;
+  runtime: SystemRuntime;
 }
 
 export interface ModelInfo {
