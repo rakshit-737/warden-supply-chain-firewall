@@ -192,7 +192,13 @@ def test_every_warden_x_result_field_is_persisted_and_exposed(client, admin_toke
         assert out["vulnerabilities"] == [{"id": "GHSA-test-fixture", "severity": "high"}]
         assert out["intel_status"]["status"] == "ok" and out["model_version"] == "iforest-2026.09"
         assert out["explanation"] == {"top_features": ["f_network"]} and out["scan_options"] == {"offline": True}
-        assert out["environment"] == "production" and out["policy_reasons"] == []
+        assert out["environment"] == "production"
+        # The policy engine explains every decision: reasons are structured and name the rule
+        # that fired (here the warn threshold, since the fixture scores 64).
+        reasons = out["policy_reasons"]
+        assert isinstance(reasons, list) and reasons
+        assert all({"rule", "detail", "finding_ids"} <= set(r) for r in reasons)
+        assert any(r["rule"] == "warn_threshold" for r in reasons)
 
         [signal] = out["signals"]
         expected = _warden_x_finding()
