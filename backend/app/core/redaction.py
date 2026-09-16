@@ -21,13 +21,21 @@ stable across serialisation round-trips. The sink escapers (``html_escape``,
 ``&amp;amp;`` — so apply each exactly once, at the output boundary.
 
 Redaction is pattern-based and high-precision: it is designed to remove the credential
-formats listed in :data:`SECRET_PATTERNS` (and values stored under secret-named keys), not
+formats listed in :data:`SECRET_PATTERNS` and :data:`EXTENDED_SECRET_PATTERNS` (applied together,
+in the order of :data:`ALL_SECRET_PATTERNS`), and values stored under secret-named keys — not
 arbitrary secrets such as free-form passwords in prose.
+
+Token patterns are anchored with "no letter or digit before / after" rather than ``\\b``, so a
+token glued to a preceding identifier (``MY_TOKEN_ghp_…``, ``url_postgres://…``) is still
+redacted: ``_`` is a word character and used to defeat the ``\\b`` anchor.
 
 Pattern order matters: patterns run one after another on the output of the previous one, and a
 token marker (``AKIA…[REDACTED:…]``) contains ``[`` which later patterns deliberately refuse to
-match (idempotency). ``url_credentials`` therefore runs before every token pattern, so a
-token-shaped *username* cannot shield the password that follows it. Under a secret-named key
+match (idempotency). ``url_credentials`` and the key-anchored patterns (``AccountKey=``,
+``"private_key": "…"``, Heroku keys) therefore run before every token pattern, so a token-shaped
+*prefix* cannot shield the secret that follows it. ``aws_secret_access_key`` runs last: it needs
+exactly 40 key characters, and a marker inserted by an earlier token pattern could otherwise
+shorten a longer run to exactly 40 characters on a second pass. Under a secret-named key
 (``password``, ``token``, ``cookie``, ``credentials`` …) every value other than ``None``, a
 boolean or an empty string is replaced — lists, mappings, bytes and numbers included — unless
 the key is one of the explicitly safe metadata keys.
@@ -55,27 +63,32 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     # ``@`` (URL parsers split userinfo at the *last* ``@``), so the greedy secret group runs
     # to the last ``@`` of the authority. ``[`` / ``]`` are excluded so the ``[REDACTED]``
     # marker can never be re-matched (idempotency). Runs before the token patterns (see module docstring).
+    # The scheme may follow an identifier character such as ``_`` (``DB_URL_postgres://``).
     ("url_credentials", re.compile(
-        r"(?P<prefix>\b[a-zA-Z][a-zA-Z0-9+.\-]{1,20}://[^\s:/@\[\]]{0,128}:)"
+        r"(?P<prefix>(?<![A-Za-z0-9+.\-])[a-zA-Z][a-zA-Z0-9+.\-]{1,20}://[^\s:/@\[\]]{0,128}:)"
         r"(?P<secret>[^\s/\[\]]{1,256})(?P<suffix>@)"
     )),
+    # Token patterns: "no letter/digit before" instead of ``\b`` (see module docstring).
     ("aws_access_key_id", re.compile(
-        r"\b(?:AKIA|ASIA|ABIA|ACCA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|APKA)[0-9A-Z]{16}\b"
+        r"(?<![A-Za-z0-9])(?:AKIA|ASIA|ABIA|ACCA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|APKA)[0-9A-Z]{16}(?![A-Za-z0-9])"
     )),
-    ("github_token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,251}\b")),
-    ("github_fine_grained_pat", re.compile(r"\bgithub_pat_[A-Za-z0-9_]{22,242}\b")),
-    ("gitlab_token", re.compile(r"\bgl(?:pat|dt|rt|cbt|ptt|ft|imt)-[A-Za-z0-9_\-]{20,}\b")),
-    ("slack_token", re.compile(r"\bxox[abposr]-[A-Za-z0-9-]{10,}\b")),
+    ("github_token", re.compile(r"(?<![A-Za-z0-9])gh[pousr]_[A-Za-z0-9]{36,251}(?![A-Za-z0-9])")),
+    ("github_fine_grained_pat", re.compile(r"(?<![A-Za-z0-9])github_pat_[A-Za-z0-9_]{22,242}(?![A-Za-z0-9_])")),
+    ("gitlab_token", re.compile(
+        r"(?<![A-Za-z0-9])gl(?:pat|dt|rt|cbt|ptt|ft|imt)-[A-Za-z0-9_\-]{20,}(?![A-Za-z0-9_\-])"
+    )),
+    ("slack_token", re.compile(r"(?<![A-Za-z0-9])xox[abposr]-[A-Za-z0-9-]{10,}(?![A-Za-z0-9-])")),
     ("slack_webhook", re.compile(r"https://hooks\.slack\.com/services/[A-Za-z0-9_/]{20,}")),
-    ("stripe_secret_key", re.compile(r"\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{20,}\b")),
-    ("google_api_key", re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b")),
-    ("pypi_token", re.compile(r"\bpypi-AgEIcHlwaS5vcmc[A-Za-z0-9_\-]{50,}")),
-    ("npm_token", re.compile(r"\bnpm_[A-Za-z0-9]{36}\b")),
-    ("anthropic_api_key", re.compile(r"\bsk-ant-(?:api|admin)\d{2}-[A-Za-z0-9_\-]{20,}")),
+    ("stripe_secret_key", re.compile(r"(?<![A-Za-z0-9])(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{20,}(?![A-Za-z0-9])")),
+    ("google_api_key", re.compile(r"(?<![A-Za-z0-9])AIza[0-9A-Za-z_\-]{35}(?![0-9A-Za-z_\-])")),
+    ("pypi_token", re.compile(r"(?<![A-Za-z0-9])pypi-AgEIcHlwaS5vcmc[A-Za-z0-9_\-]{50,}")),
+    ("npm_token", re.compile(r"(?<![A-Za-z0-9])npm_[A-Za-z0-9]{36}(?![A-Za-z0-9])")),
+    ("anthropic_api_key", re.compile(r"(?<![A-Za-z0-9])sk-ant-(?:api|admin)\d{2}-[A-Za-z0-9_\-]{20,}")),
     ("openai_api_key", re.compile(
-        r"\bsk-(?:proj|svcacct|admin)-[A-Za-z0-9_\-]{20,}|\bsk-[A-Za-z0-9]{20}T3BlbkFJ[A-Za-z0-9]{20}\b"
+        r"(?<![A-Za-z0-9])sk-(?:proj|svcacct|admin)-[A-Za-z0-9_\-]{20,}"
+        r"|(?<![A-Za-z0-9])sk-[A-Za-z0-9]{20}T3BlbkFJ[A-Za-z0-9]{20}(?![A-Za-z0-9])"
     )),
-    ("jwt", re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")),
+    ("jwt", re.compile(r"(?<![A-Za-z0-9])eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")),
     ("bearer_token", re.compile(
         r"(?i)(?P<prefix>\bauthorization[\"']?\s*[:=]\s*[\"']?bearer\s+)(?P<secret>[A-Za-z0-9._~+/\-]{16,}=*)"
     )),
@@ -92,6 +105,61 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         r"(?P<secret>(?=[A-Za-z0-9._~+/\-]*\d)(?=[A-Za-z0-9._~+/\-]*[A-Za-z])[A-Za-z0-9._~+/\-]{20,}=*)"
     )),
 )
+
+# Warden X additions. Kept in a separate tuple so ``SECRET_PATTERNS`` stays the stable v1 set;
+# ``ALL_SECRET_PATTERNS`` (below) is what every function in this module applies.
+# Key-anchored formats: only the value after the key is redacted. They run right after
+# ``url_credentials`` (see module docstring for why).
+_KEY_ANCHORED_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    # Azure Storage ``AccountKey=`` and Service Bus / Event Hubs ``SharedAccessKey=`` in connection strings.
+    # ``SharedAccessKeyName=`` (a key *name*) does not match: ``=`` must follow the key.
+    ("azure_storage_key", re.compile(
+        r"(?P<prefix>(?<![A-Za-z0-9])(?i:AccountKey|SharedAccessKey)\s*=\s*)(?P<secret>[A-Za-z0-9+/]{20,}={0,2})"
+    )),
+    # ``"private_key": "<key material>"`` JSON/YAML fields (GCP service-account files, JWK-like
+    # configs) whose value is not PEM armoured; PEM values are handled by ``private_key``.
+    ("gcp_private_key_field", re.compile(
+        r"(?P<prefix>\\?[\"']private_key\\?[\"']\s*:\s*\\?[\"'])(?!-----BEGIN)(?P<secret>[A-Za-z0-9+/=_\\\-]{40,})"
+    )),
+    # Heroku API keys are plain UUIDs, so they are only recognised next to a Heroku key name:
+    # ``HEROKU_API_KEY=…``, ``heroku.token: …`` or a key directly nested under a ``heroku:`` YAML
+    # mapping (``heroku:\n  api_key: …``). The line break may also be the escaped form that
+    # ``sanitize_text`` produces (``\\n``, ``\\x0d\\n``), so sanitised text is redacted the same way.
+    ("heroku_api_key", re.compile(
+        r"(?i)(?P<prefix>(?<![A-Za-z0-9])heroku[A-Za-z0-9_.\-]{0,32}?"
+        r"(?:[\"']?[ \t]{0,8}:[ \t]{0,8}(?:\r?\n|(?:\\r|\\x0d)?\\n)[ \t]{1,16})?(?:api[_-]?key|token|secret|key)"
+        r"[\"']?\s*[:=]{1,2}>?\s*[\"']?)"
+        r"(?P<secret>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?![0-9a-z])"
+    )),
+)
+# Provider token formats with distinctive prefixes. They run after the v1 patterns.
+_TOKEN_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("slack_app_token", re.compile(r"(?<![A-Za-z0-9])xapp-\d-[A-Za-z0-9]{8,}-\d{8,}-[A-Za-z0-9]{24,}(?![A-Za-z0-9])")),
+    ("twilio_api_key", re.compile(r"(?<![A-Za-z0-9])SK[0-9a-fA-F]{32}(?![A-Za-z0-9])")),
+    ("sendgrid_api_key", re.compile(
+        r"(?<![A-Za-z0-9])SG\.[A-Za-z0-9_\-]{22}\.[A-Za-z0-9_\-]{43}(?![A-Za-z0-9_\-])"
+    )),
+    # Legacy Mailgun private keys. A preceding ``-`` or ``_`` (``api-key-…``, ``monkey-…``) does not match.
+    ("mailgun_api_key", re.compile(r"(?<![A-Za-z0-9_\-])key-[0-9a-f]{32}(?![A-Za-z0-9])")),
+)
+# AWS secret access keys have no prefix: recognised only after an AWS secret-key name. Runs last.
+_LAST_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("aws_secret_access_key", re.compile(
+        r"(?i)(?P<prefix>(?<![A-Za-z0-9])(?:aws_?secret_?(?:access_?)?key|secret_?access_?key)"
+        r"[\"']?\s*[:=]{1,2}>?\s*[\"']?)"
+        r"(?P<secret>[A-Za-z0-9/+]{40})(?![A-Za-z0-9/+=])"
+    )),
+)
+EXTENDED_SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    _KEY_ANCHORED_PATTERNS + _TOKEN_PATTERNS + _LAST_PATTERNS
+)
+# Application order: private key and URL credentials, key-anchored values, v1 tokens and HTTP
+# authorization credentials, the new token formats, then AWS secret access keys.
+ALL_SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    SECRET_PATTERNS[:2] + _KEY_ANCHORED_PATTERNS + SECRET_PATTERNS[2:] + _TOKEN_PATTERNS + _LAST_PATTERNS
+)
+if [d for d, _ in SECRET_PATTERNS[:2]] != ["private_key", "url_credentials"]:  # pragma: no cover - import guard
+    raise RuntimeError("ALL_SECRET_PATTERNS ordering assumes private_key and url_credentials come first")
 
 # Keys whose *values* are always treated as secret, whatever they look like.
 _SENSITIVE_KEY_RE = re.compile(
@@ -161,7 +229,7 @@ def redact_text(text: str) -> str:
     if not text:
         return text
     out = text
-    for detector, pattern in SECRET_PATTERNS:
+    for detector, pattern in ALL_SECRET_PATTERNS:
         out = pattern.sub(lambda m, d=detector: _mask(m, d), out)
     return out
 
@@ -178,7 +246,7 @@ def find_secrets(text: str) -> list[tuple[str, int, int, str]]:
     callers must never persist, log or return it — use :func:`redact_value` instead.
     """
     hits: list[tuple[str, int, int, str]] = []
-    for detector, pattern in SECRET_PATTERNS:
+    for detector, pattern in ALL_SECRET_PATTERNS:
         for m in pattern.finditer(text):
             if m.groupdict().get("secret") is not None:
                 hits.append((detector, m.start("secret"), m.end("secret"), m.group("secret")))
@@ -187,11 +255,17 @@ def find_secrets(text: str) -> list[tuple[str, int, int, str]]:
     return hits
 
 
-def redact_value(value: str, detector: str = "secret") -> str:
-    """A display-safe stand-in for a secret value: type prefix + length, never the secret."""
+def redact_value(value: str, detector: str = "secret", *, keep_prefix: bool = True) -> str:
+    """A display-safe stand-in for a secret value: type prefix + length, never the secret.
+
+    The first four characters are shown only for values of at least 16 characters, and only
+    while ``keep_prefix`` is true. Pass ``keep_prefix=False`` for formats without a public type
+    prefix (passwords, AWS secret access keys, generic secrets), where those four characters
+    would be part of the secret itself.
+    """
     if detector == "private_key":
         return PRIVATE_KEY_MARKER
-    prefix = value[:4] if len(value) >= 16 else ""
+    prefix = value[:4] if keep_prefix and len(value) >= 16 else ""
     return f"{prefix}…[REDACTED:{detector}:len={len(value)}]"
 
 
@@ -224,7 +298,7 @@ def sanitize_text(value: object, *, max_len: int = 300, redact: bool = True, kee
 
 
 def _first_match_start(text: str) -> int:
-    starts = [m.start() for _, pattern in SECRET_PATTERNS if (m := pattern.search(text))]
+    starts = [m.start() for _, pattern in ALL_SECRET_PATTERNS if (m := pattern.search(text))]
     return min(starts) if starts else 0
 
 
