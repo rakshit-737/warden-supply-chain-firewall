@@ -1,0 +1,35 @@
+# Warden typosquat allowlist: legitimate projects whose names are close to a popular package.
+#
+# Format: one pair per line -- "<candidate> <target>  # <one-line justification>".
+# Names are compared in PEP 503 canonical form. An entry suppresses the TYPOSQUAT finding for that
+# exact (candidate, target) pair only; the candidate is still compared with every other target, and
+# all other analyzers still run. Entries without a justification are ignored by the loader.
+#
+# Curation rules: add a pair only for an established, independently maintained project whose
+# identity was verified (project home page / repository), never merely because a scan was noisy.
+# Every entry below was a finding in the measured false-positive run over
+# tests/data/typosquat/legit_next5000.txt (see data/README.md); the test suite checks that each entry
+# still suppresses a real finding and reports the false-positive rate both without and with this list.
+fastai fastapi  # fast.ai deep-learning library (github.com/fastai/fastai); unrelated to the FastAPI web framework
+identity identify  # Microsoft identity-platform auth helper for web apps (github.com/rayluo/identity); unrelated to identify
+grequests requests  # gevent-based asynchronous wrapper around Requests (github.com/spyoungtech/grequests)
+bpython ipython  # bpython curses REPL (bpython-interpreter.org); independent of IPython
+willow pillow  # Wagtail's image-operations library (github.com/wagtail/Willow)
+simpy sympy  # SimPy discrete-event simulation framework (gitlab.com/team-simpy/simpy)
+scrypt bcrypt  # bindings for the scrypt key-derivation function; a different KDF from bcrypt
+vyper typer  # Vyper smart-contract language compiler (github.com/vyperlang/vyper)
+hyper typer  # hyper HTTP/2 client from the python-hyper project (github.com/python-hyper/hyper)
+torchx torch  # TorchX job launcher from the PyTorch project (github.com/pytorch/torchx)
+crick click  # Crick approximate-statistics library from the Dask project (github.com/dask/crick)
+persistent pyrsistent  # ZODB persistent-object base classes (github.com/zopefoundation/persistent)
+mocket locket  # Mocket socket-mocking library (github.com/mindflayer/python-mocket)
+ngboost xgboost  # NGBoost natural gradient boosting from Stanford ML Group (github.com/stanfordmlgroup/ngboost)
+wsgiref asgiref  # historical standalone distribution of the stdlib wsgiref module (PEP 3333 reference)
+postgres postgrest  # postgres.py database library (github.com/chadwhitacre/postgres.py); postgrest is Supabase's client
+gitdb2 gitdb  # transitional distribution name used by the GitPython developers (github.com/gitpython-developers/gitdb)
+smmap2 smmap  # transitional distribution name used by the GitPython developers (github.com/gitpython-developers/smmap)
+elasticsearch8 elasticsearch  # official major-version-pinned Elasticsearch client (github.com/elastic/elasticsearch-py)
+elasticsearch6 elasticsearch  # official major-version-pinned Elasticsearch client (github.com/elastic/elasticsearch-py)
+google-cloud-filestore google-cloud-firestore  # both official Google Cloud client libraries (github.com/googleapis)
+textual-dev textual  # official Textual developer tools published by Textualize (github.com/Textualize/textual-dev)
+demoji emoji  # emoji detection/replacement library (github.com/bsolomon1124/demoji)
