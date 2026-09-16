@@ -1,10 +1,11 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import App from "./App";
 import { AuthContext, type AuthState } from "./auth/context";
 import { makeAuthState } from "./test/auth";
+import { preloadRoutes } from "./test/preloadRoutes";
 
 function renderApp(auth: AuthState, path: string) {
   render(
@@ -17,6 +18,8 @@ function renderApp(auth: AuthState, path: string) {
 }
 
 describe("App", () => {
+  beforeAll(preloadRoutes);
+
   it("does not open the audit section for a role without audit:read", async () => {
     renderApp(makeAuthState("developer"), "/audit");
     expect(await screen.findByRole("heading", { name: "Access restricted" })).toBeInTheDocument();

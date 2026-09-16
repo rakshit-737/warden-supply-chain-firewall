@@ -81,5 +81,9 @@ export default defineConfig({
     css: false,
     restoreMocks: true,
     unstubGlobals: true,
+    // Waiting for async UI under a loaded CI machine needs more than the 5s default:
+    // several suites time out only when the whole suite runs in parallel.
+    testTimeout: 30000,
+    hookTimeout: 30000,
   },
 });
