@@ -1,0 +1,56 @@
+{
+  "_fixture": "FIXTURE modelled on the provenance example documented at https://docs.pypi.org/api/integrity/ (PEP 740 provenance object). Certificate, signature and transparency-log values are placeholders, not real Sigstore material. The in-toto statement is a synthetic PyPI Publish Attestation v1 whose subject is sampleproject-4.0.0.tar.gz with sha256 2fb62fad79eca8c0446919867a2cf5844f326aed8f79d5d56308876d00fd15e6 = sha256 of the test's FIXTURE_SDIST bytes.",
+  "attestation_bundles": [
+    {
+      "attestations": [
+        {
+          "envelope": {
+            "signature": "RklYVFVSRS1TSUdOQVRVUkUtTk9ULVJFQUw=",
+            "statement": "eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjEiLCJzdWJqZWN0IjpbeyJuYW1lIjoic2FtcGxlcHJvamVjdC00LjAuMC50YXIuZ3oiLCJkaWdlc3QiOnsic2hhMjU2IjoiMmZiNjJmYWQ3OWVjYThjMDQ0NjkxOTg2N2EyY2Y1ODQ0ZjMyNmFlZDhmNzlkNWQ1NjMwODg3NmQwMGZkMTVlNiJ9fV0sInByZWRpY2F0ZVR5cGUiOiJodHRwczovL2RvY3MucHlwaS5vcmcvYXR0ZXN0YXRpb25zL3B1Ymxpc2gvdjEiLCJwcmVkaWNhdGUiOm51bGx9"
+          },
+          "verification_material": {
+            "certificate": "RklYVFVSRS1DRVJUSUZJQ0FURS1OT1QtUkVBTA==",
+            "transparency_entries": [
+              {
+                "canonicalizedBody": "RklYVFVSRS1SRUtPUi1CT0RZLU5PVC1SRUFM",
+                "inclusionPromise": {
+                  "signedEntryTimestamp": "RklYVFVSRS1TRVQtTk9ULVJFQUw="
+                },
+                "inclusionProof": {
+                  "checkpoint": {
+                    "envelope": "FIXTURE rekor checkpoint placeholder"
+                  },
+                  "hashes": [
+                    "RklYVFVSRS1IQVNILTE=",
+                    "RklYVFVSRS1IQVNILTI="
+                  ],
+                  "logIndex": "1",
+                  "rootHash": "RklYVFVSRS1ST09ULUhBU0g=",
+                  "treeSize": "2"
+                },
+                "integratedTime": "1730932627",
+                "kindVersion": {
+                  "kind": "dsse",
+                  "version": "0.0.1"
+                },
+                "logId": {
+                  "keyId": "RklYVFVSRS1MT0ctSUQ="
+                },
+                "logIndex": "1"
+              }
+            ]
+          },
+          "version": 1
+        }
+      ],
+      "publisher": {
+        "claims": null,
+        "environment": "release",
+        "kind": "GitLab",
+        "repository": "example-group/tools/sampleproject",
+        "workflow_filepath": ".gitlab-ci.yml"
+      }
+    }
+  ],
+  "version": 1
+}

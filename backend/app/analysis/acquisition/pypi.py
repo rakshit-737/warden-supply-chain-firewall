@@ -178,6 +178,36 @@ class ResolvedRelease:
     project_info: dict = field(default_factory=dict)
 
 
+# Outcomes of :meth:`PyPIClient.provenance_lookup` (``ProvenanceLookup.status``).
+LOOKUP_FOUND = "found"
+LOOKUP_NOT_FOUND = "not_found"
+LOOKUP_MALFORMED = "malformed"
+LOOKUP_ERROR = "error"
+LOOKUP_INVALID_INPUT = "invalid_input"
+
+
+@dataclass
+class ProvenanceLookup:
+    """Outcome of one Integrity API provenance request, keeping *why* no document is available.
+
+    ``status`` is one of:
+
+    * ``found`` — HTTP 2xx with a JSON object body in ``document`` (still hostile and unvalidated);
+    * ``not_found`` — HTTP 404: the registry reports no provenance for the file;
+    * ``malformed`` — HTTP 2xx whose body is not valid JSON or not a JSON object
+      (``error_kind`` ``invalid_json`` / ``not_an_object``);
+    * ``error`` — no complete answer: transport failure, refused response (size cap, host
+      allowlist, undecodable encoding) or an HTTP status other than 2xx/404. ``error_kind`` is the
+      :class:`~app.core.http.OutboundHTTPError` kind, or ``status`` for an error status;
+    * ``invalid_input`` — the coordinates failed validation, so no request was made.
+    """
+
+    status: str
+    document: dict | None = None
+    http_status: int | None = None
+    error_kind: str | None = None
+
+
 class PyPIClient:
     def __init__(
         self,
@@ -401,6 +431,70 @@ class PyPIClient:
             log.warning("provenance_lookup_failed", url=safe_url(url), kind=exc.kind, status=exc.status)
             return None
         return data if isinstance(data, dict) else None
+
+    def provenance_lookup(self, name: str, version: str, filename: str) -> ProvenanceLookup:
+        """PEP 740 provenance for one file, reporting why no document is available (see :class:`ProvenanceLookup`).
+
+        Unlike :meth:`provenance` (kept unchanged for existing callers) this distinguishes "the
+        registry has no provenance" (404) from "the lookup failed" and from "the registry served a
+        2xx body that is not a provenance object", which callers must not conflate. It never raises
+        for network, status or decoding problems.
+        """
+        try:
+            name, version = validate_name(name), validate_version(version)
+        except AnalysisError:
+            log.warning("provenance_lookup_skipped", reason="invalid_coordinates")
+            return ProvenanceLookup(LOOKUP_INVALID_INPUT, error_kind="invalid_coordinates")
+        if not isinstance(filename, str) or not FILENAME_RE.match(filename):
+            log.warning("provenance_lookup_skipped", reason="invalid_filename")
+            return ProvenanceLookup(LOOKUP_INVALID_INPUT, error_kind="invalid_filename")
+        url = f"{self.integrity_base}/{_quote(name)}/{_quote(version)}/{_quote(filename)}/provenance"
+        try:
+            result = self.registry_http.request("GET", url, headers={"Accept": INTEGRITY_ACCEPT},
+                                                max_bytes=MAX_PROVENANCE_BYTES)
+        except OutboundHTTPError as exc:
+            log.warning("provenance_lookup_failed", url=safe_url(url), kind=exc.kind, status=exc.status)
+            return ProvenanceLookup(LOOKUP_ERROR, http_status=exc.status, error_kind=exc.kind)
+        if result.status == 404:
+            return ProvenanceLookup(LOOKUP_NOT_FOUND, http_status=404)
+        if not 200 <= result.status < 300:
+            log.warning("provenance_lookup_failed", url=safe_url(url), status=result.status)
+            return ProvenanceLookup(LOOKUP_ERROR, http_status=result.status, error_kind="status")
+        try:
+            data = result.json()
+        except OutboundHTTPError:
+            log.warning("provenance_document_malformed", url=safe_url(url), reason="invalid_json")
+            return ProvenanceLookup(LOOKUP_MALFORMED, http_status=result.status, error_kind="invalid_json")
+        if not isinstance(data, dict):
+            log.warning("provenance_document_malformed", url=safe_url(url), reason="not_an_object")
+            return ProvenanceLookup(LOOKUP_MALFORMED, http_status=result.status, error_kind="not_an_object")
+        return ProvenanceLookup(LOOKUP_FOUND, document=data, http_status=result.status)
+
+    def previous_release_metadata(self, name: str, version: str) -> dict[str, Any] | None:
+        """Bounded identity metadata of one specific release (e.g. the release before the analysed one).
+
+        Reads ``/pypi/<name>/<version>/json`` and returns the slim string keys (``author``,
+        ``author_email``, ``maintainer``, ``maintainer_email`` ...), ``project_urls``,
+        ``ownership`` (when present) and ``_maintainer_count``, bounded exactly like
+        :meth:`build_metadata`. Returns ``None`` when the version does not exist; raises
+        :class:`AnalysisError` for invalid coordinates, transport failures and malformed metadata
+        (see :meth:`release`).
+
+        PyPI serves ``ownership`` as the project's *current* roles, not the roles at the time the
+        release was published, so on its own it cannot reveal a historical ownership change.
+        """
+        doc = self.release(name, version)
+        if doc is None:
+            return None
+        info = doc["info"]
+        md: dict[str, Any] = {key: bounded_str(info.get(key)) for key in _SLIM_STRING_KEYS}
+        md["version"] = validate_version(version)
+        md["project_urls"] = _str_map(info.get("project_urls"))
+        ownership = info.get("ownership")
+        if isinstance(ownership, Mapping):
+            md["ownership"] = bounded(ownership)
+        md["_maintainer_count"] = maintainer_count(md)
+        return md
 
     # ------------------------------------------------------------------ metadata
     def build_metadata(self, release: ResolvedRelease) -> dict[str, Any]:
