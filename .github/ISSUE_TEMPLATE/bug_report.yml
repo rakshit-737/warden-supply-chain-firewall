@@ -1,0 +1,42 @@
+name: Bug report
+description: Something in Warden does not work as documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Security vulnerabilities must not be reported here.** Use a private security advisory instead (see SECURITY.md).
+        Do not paste tokens, passwords or private package names.
+  - type: input
+    id: version
+    attributes:
+      label: Warden version
+      placeholder: "2.0.0 or commit SHA"
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options: [Package scan, Project scan / SBOM, Release diff, Container scan, Monitoring, CLI, GitHub Action, API, Console, Deployment]
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Commands, package name and version, or a minimal manifest.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: Include the request id from error responses. Remove secrets first.
+      render: text

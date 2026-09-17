@@ -1,0 +1,34 @@
+name: False positive / missed detection
+description: Warden flagged a benign package, or missed a malicious one
+labels: ["detection"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not attach live malware. Describe the package by name and version, or share the relevant code as text with network indicators defanged.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options: [False positive (benign package flagged), Missed detection (malicious package allowed)]
+    validations:
+      required: true
+  - type: input
+    id: package
+    attributes:
+      label: Package and version
+      placeholder: "name==1.2.3"
+    validations:
+      required: true
+  - type: textarea
+    id: findings
+    attributes:
+      label: Decision, risk score and finding codes
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why you think the result is wrong
+    validations:
+      required: true
