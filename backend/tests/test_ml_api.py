@@ -23,6 +23,7 @@ from app.core.security import create_access_token, hash_password
 from app.db.models import Decision, Scan, Severity, User
 from app.db.session import SessionLocal
 from ml import generate_dataset as G
+from ml.datasets import SyntheticDataset
 from ml.evaluate import SYNTHETIC_LABEL
 from ml.train import TrainConfig, train
 from tests.conftest import auth
@@ -35,7 +36,10 @@ _offsets = itertools.count(1)
 @pytest.fixture(scope="module")
 def trained_store(tmp_path_factory) -> ModelStore:
     out = tmp_path_factory.mktemp("ml-api")
-    train(n=700, seed=51, artifact_dir=out, config=TINY, trained_at="2026-01-01T00:00:00+00:00")
+    # Pinned to the synthetic dataset: the assertions below describe the synthetic scope label,
+    # and must not change when the measured corpus is present in the checkout.
+    train(n=700, seed=51, artifact_dir=out, config=TINY, trained_at="2026-01-01T00:00:00+00:00",
+          dataset=SyntheticDataset(n=700, seed=51))
     store = ModelStore(out / "model.joblib")
     assert store.available
     return store
