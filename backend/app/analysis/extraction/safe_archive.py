@@ -568,11 +568,15 @@ class SafeArchiveReader:
         return _Limits(max_path_length=settings.MAX_PATH_LENGTH, max_path_depth=settings.MAX_PATH_DEPTH, **values)
 
     # ------------------------------------------------------------------ entry point
-    def read(self, data: bytes, filename: str) -> ExtractionResult:
+    def read(self, data: bytes, filename: str, *, strip_top: bool | None = None) -> ExtractionResult:
+        """Read ``data``. ``strip_top`` drops the first path component (the ``name-version/``
+        directory sdists wrap everything in); it defaults to True except for wheels. Container image
+        archives and layers pass False because their paths are already rooted."""
         result = ExtractionResult()
         state = _State(self._limits(), self._clock)
         name = str(filename or "")
         is_wheel = name.lower().endswith(".whl")
+        strip = (not is_wheel) if strip_top is None else strip_top
         fmt = detect_archive_format(data) if data else None
         result.archive_format = fmt
         try:
@@ -582,9 +586,9 @@ class SafeArchiveReader:
             if expected_zip != (fmt == "zip"):
                 _warn(result, state, f"format_mismatch: content is {fmt}, filename is {display_name(name, 120)}")
             if fmt == "zip":
-                self._read_zip(data, not is_wheel, state, result)
+                self._read_zip(data, strip, state, result)
             else:
-                self._read_tar(data, fmt, not is_wheel, state, result)
+                self._read_tar(data, fmt, strip, state, result)
             if not result.inventory:
                 _warn(result, state, "empty_archive")
         except _Abort as exc:

@@ -74,7 +74,8 @@ def _finding(code: str, severity: Severity, message: str, evidence: dict, file: 
                    ).with_defaults(analyzer=ANALYZER_NAME, analyzer_version=ANALYZER_VERSION)
 
 
-def _looks_secret(key: str, value: str) -> bool:
+def looks_like_secret(key: str, value: str) -> bool:
+    """True when ``value`` under variable ``key`` looks like a baked-in credential (never logs it)."""
     if find_secrets(value):
         return True
     literal = value.strip().strip("'\"")
@@ -174,7 +175,7 @@ def lint_dockerfile(text: str, path: str = "Dockerfile") -> list[Finding]:
                 ))
         elif keyword in ("ENV", "ARG"):
             for key, value in _env_pairs(args):
-                if value and _looks_secret(key, value):
+                if value and looks_like_secret(key, value):
                     findings.append(_finding(
                         Code.DOCKERFILE_SECRET_IN_ENV, Severity.high,
                         f"{keyword} {key} bakes a secret-like literal into the image",
@@ -252,7 +253,7 @@ def lint_compose(text: str, path: str = "docker-compose.yml") -> list[Finding]:
                                      confidence=0.5 if _VARIABLE_RE.search(image_ref) else 0.95))
         environment = fields.get("environment")
         for key, value, node in _environment(environment[1] if environment else None):
-            if value and _looks_secret(key, value):
+            if value and looks_like_secret(key, value):
                 findings.append(_finding(Code.DOCKERFILE_SECRET_IN_ENV, Severity.high,
                                          f"Service '{label}' sets {key} to a secret-like literal",
                                          {"service": label, "name": sanitize_text(key, max_len=100)},
