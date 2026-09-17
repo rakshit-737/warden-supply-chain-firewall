@@ -31,13 +31,19 @@ erDiagram
 | `audit_events` | Append-only audit trail | `seq`, `prev_hash` and `event_hash` form a sha256 chain over a canonical encoding of each event. On PostgreSQL a trigger rejects `UPDATE` and `DELETE`; appends take an advisory lock so the chain cannot fork. |
 | `security_events` | Operational security events | Type, severity, title, package and version, optional scan and project, sanitised details, acknowledgement. The row is the durable record; a Redis stream carries a best-effort copy. |
 
-## Tables created for the next phase
+## Projects, diffs, containers and monitoring
 
-These exist in the schema so the next features do not need another disruptive migration, but no
-route writes to them yet: `projects`, `project_scans`, `project_components`, `dependency_edges`
-(project scanning, SBOM and dependency graph), `vulnerability_records` (intelligence cache),
-`monitored_packages` (continuous monitoring), `release_diffs` (behavioural diffing),
-`container_scans` (image scanning), `scan_jobs` (queued work).
+| Table | Written by | Notes |
+|---|---|---|
+| `projects` | `POST /projects` | Unique name. |
+| `project_scans` | `POST /projects/{id}/scans` | Manifests (file, type, sha256), counts, decision, risk, findings summary, graph and the CycloneDX document. The submitted manifest text itself is not stored. |
+| `project_components` | project scans | One row per component, with declaration positions and the id, risk and decision of the newest stored verdict for the same name, version and environment. |
+| `dependency_edges` | project scans | Parent and child `bom_ref` with the specifier. |
+| `release_diffs` | `POST /diffs`, the monitoring worker | One row per package, version pair and analyzer version; summary and the findings new in the newer release. |
+| `container_scans` | `POST /containers/scans` | Label, config digest, `completed` / `incomplete`, tool status, summary, findings and the CycloneDX component list. The image archive is not stored. |
+| `monitored_packages` | `/monitoring` routes, the worker | Baseline (`approved_version`), last seen version and risk, snapshot, schedule, consecutive failures. A partial unique index covers rows without a project. |
+| `vulnerability_records` | `GET /vulnerabilities/lookup` | Advisory cache keyed by OSV id with KEV and EPSS enrichment. |
+| `scan_jobs` | — | Reserved for queued work; nothing writes to it yet. |
 
 ## Design notes
 
