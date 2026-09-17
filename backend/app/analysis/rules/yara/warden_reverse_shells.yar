@@ -1,5 +1,5 @@
 /*
- * Warden X packaged YARA rules: reverse shells.
+ * Warden packaged YARA rules: reverse shells.
  *
  * Namespace: warden_reverse_shells. Metadata schema, scopes and fast-mode constraints are
  * documented in README.md next to this file; app/analysis/rules validates them at import.
@@ -12,7 +12,7 @@ rule WX_SHELL_Python_Socket_Reverse_Shell
     meta:
         id = "WX-YARA-020"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "Python reverse shell: an outbound socket wired to stdin/stdout/stderr and an interactive shell spawned"
         severity = "critical"
@@ -44,7 +44,7 @@ rule WX_SHELL_Unix_Reverse_Shell_One_Liner
     meta:
         id = "WX-YARA-021"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "Unix reverse-shell one-liner: interactive shell redirected to /dev/tcp, netcat -e shell, or mkfifo shell relay"
         severity = "critical"

@@ -115,7 +115,7 @@ def test_document_creation_info_and_deterministic_namespace():
     first, second = full_document(), full_document()
     assert json.dumps(first) == json.dumps(second)
     assert (first["spdxVersion"], first["dataLicense"], first["SPDXID"]) == ("SPDX-2.3", "CC0-1.0", "SPDXRef-DOCUMENT")
-    assert first["creationInfo"] == {"created": TIMESTAMP, "creators": ["Tool: warden-x-2.0.0"]}
+    assert first["creationInfo"] == {"created": TIMESTAMP, "creators": ["Tool: warden-2.0.0"]}
     namespace = first["documentNamespace"]
     assert namespace.startswith(DEFAULT_NAMESPACE_BASE + "/fixture-project-") and "#" not in namespace
     assert full_document(timestamp="2026-09-16T00:00:00Z")["documentNamespace"] != namespace
@@ -190,7 +190,7 @@ def test_vulnerability_references_and_warden_annotations():
          "referenceLocator": "https://osv.dev/vulnerability/GHSA-fx11-fx11-fx11", "comment": "GHSA-fx11-fx11-fx11"},
     ]  # WARDEN-FIXTURE-3 has no URL, so no reference is fabricated for it
     assert httpx["annotations"] == [{
-        "annotationDate": TIMESTAMP, "annotationType": "OTHER", "annotator": "Tool: warden-x-2.0.0",
+        "annotationDate": TIMESTAMP, "annotationType": "OTHER", "annotator": "Tool: warden-2.0.0",
         "comment": "warden:risk_score=81; warden:decision=block; warden:finding_count=1; "
                    "warden:max_finding_severity=medium",
     }]

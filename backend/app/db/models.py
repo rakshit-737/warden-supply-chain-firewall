@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models (Warden X schema, Alembic revision ``0002_warden_x``).
+"""SQLAlchemy ORM models (Warden 2 schema, Alembic revision ``0002_warden_x``).
 
 See docs/DATA_MODEL.md for the ER diagram. Conventions:
 
@@ -141,7 +141,7 @@ class Policy(Base, UUIDPrimaryKey, TimestampMixin):
     allowlist: Mapped[list] = mapped_column(PortableJSON, default=list, nullable=True)
     denylist: Mapped[list] = mapped_column(PortableJSON, default=list, nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # --- Warden X ---
+    # --- Warden 2 ---
     environment: Mapped[str] = mapped_column(
         String(20), default=DEFAULT_ENVIRONMENT, server_default=DEFAULT_ENVIRONMENT, nullable=False, index=True
     )
@@ -229,7 +229,7 @@ class Scan(Base, UUIDPrimaryKey, TimestampMixin):
     matched_policy_rules: Mapped[list] = mapped_column(PortableJSON, default=list, nullable=True)
     analyzer_version: Mapped[str] = mapped_column(String(20), nullable=False)
     duration_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    # --- Warden X ---
+    # --- Warden 2 ---
     risk: Mapped[dict | None] = mapped_column(PortableJSON, nullable=True)
     attack_chains: Mapped[list | None] = mapped_column(PortableJSON, nullable=True)
     analyzer_runs: Mapped[list | None] = mapped_column(PortableJSON, nullable=True)
@@ -266,7 +266,7 @@ class Signal(Base, UUIDPrimaryKey):
     weight: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     message: Mapped[str] = mapped_column(String(500), nullable=False)
     evidence: Mapped[dict] = mapped_column(PortableJSON, default=dict, nullable=True)
-    # --- Warden X finding fields ---
+    # --- Warden 2 finding fields ---
     finding_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     category: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
@@ -299,7 +299,7 @@ class AuditEvent(Base, UUIDPrimaryKey, TimestampMixin):
     target_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", PortableJSON, default=dict, nullable=True)
     request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    # --- Warden X hash chain ---
+    # --- Warden 2 hash chain ---
     seq: Mapped[int] = mapped_column(BigInteger, nullable=False, unique=True, index=True)
     prev_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     event_hash: Mapped[str] = mapped_column(String(64), nullable=False)

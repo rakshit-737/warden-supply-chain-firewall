@@ -1,4 +1,4 @@
-"""Warden X schema
+"""Warden 2 schema
 
 Adds: RBAC roles (non-native VARCHAR role column), finding/scan enrichment columns, policy
 environments + policy-as-code documents, policy exceptions, security events, the audit
@@ -20,7 +20,7 @@ Data migrations:
   PostgreSQL script instead refuses to proceed if unchained rows exist.
 
 Downgrade maps roles back (security_analyst/developer → analyst, read_only/auditor/unknown →
-viewer) and drops everything this revision added (Warden X data in new tables is lost).
+viewer) and drops everything this revision added (Warden 2 data in new tables is lost).
 
 Revision ID: 0002_warden_x
 Revises: 0001_initial

@@ -14,7 +14,7 @@ export interface PageHeaderProps {
 
 export function PageHeader({ title, heading, description, meta, actions, back }: PageHeaderProps) {
   useEffect(() => {
-    document.title = `${title} | Warden X`;
+    document.title = `${title} | Warden`;
   }, [title]);
 
   return (

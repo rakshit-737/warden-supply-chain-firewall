@@ -1,4 +1,4 @@
-"""Analysis orchestrator — the Warden X package-analysis pipeline.
+"""Analysis orchestrator — the Warden package-analysis pipeline.
 
 Pipeline for ``Orchestrator.analyze(ecosystem, name, version, options)``:
 
@@ -117,7 +117,7 @@ class AnalysisResult:
     ml_available: bool
     cached: bool = False
     capabilities: list[str] = field(default_factory=list)
-    # --- Warden X fields ------------------------------------------------------------
+    # --- Warden 2 fields ------------------------------------------------------------
     risk: dict = field(default_factory=dict)
     attack_chains: list[dict] = field(default_factory=list)
     analyzer_runs: list[dict] = field(default_factory=list)

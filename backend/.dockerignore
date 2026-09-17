@@ -1,4 +1,4 @@
-# Build context for the Warden X API image: send only what the Dockerfile needs, and never local
+# Build context for the Warden API image: send only what the Dockerfile needs, and never local
 # secrets, databases, caches or workstation-trained models (the image trains its own model).
 .git
 .gitignore

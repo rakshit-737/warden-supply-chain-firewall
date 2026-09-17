@@ -1,4 +1,4 @@
-"""Prometheus metrics for Warden X.
+"""Prometheus metrics for Warden.
 
 All metrics live in a dedicated :class:`~prometheus_client.CollectorRegistry` (``REGISTRY``)
 rather than the process-global default registry, so exposition contains only Warden's own

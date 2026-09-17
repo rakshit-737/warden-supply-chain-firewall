@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # --- Server ------------------------------------------------------------
-    PROJECT_NAME: str = "Warden X — Software Supply-Chain Security Platform"
+    PROJECT_NAME: str = "Warden — Software Supply-Chain Security Platform"
     API_V1_PREFIX: str = "/api/v1"
     HOST: str = "0.0.0.0"  # nosec B104 - binding all interfaces is intended inside a container
     PORT: int = 8000

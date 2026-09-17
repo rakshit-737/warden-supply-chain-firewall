@@ -3,7 +3,7 @@
 Package-name validation happens *here*, before the value ever reaches the fetcher, so a
 malformed or injection-style name cannot influence a URL or a filesystem path downstream.
 
-Warden X fields on ``ScanOut`` / ``SignalOut`` are optional so v1 clients keep working and
+Warden fields on ``ScanOut`` / ``SignalOut`` are optional so v1 clients keep working and
 rows persisted before migration 0002 (where those columns are NULL) still serialise.
 """
 
@@ -88,7 +88,7 @@ class SignalOut(BaseModel):
     weight: float
     message: str
     evidence: dict
-    # --- Warden X (optional) ---
+    # --- Warden 2 (optional) ---
     finding_id: str | None = None
     confidence: float | None = None
     category: str | None = None
@@ -128,7 +128,7 @@ class ScanOut(BaseModel):
     duration_ms: int
     created_at: datetime
     signals: list[SignalOut] = []
-    # --- Warden X (optional) ---
+    # --- Warden 2 (optional) ---
     environment: str | None = None
     malicious_risk: int | None = None
     vulnerability_risk: int | None = None

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.26.0@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
 #
-# Warden X API image.
+# Warden API image.
 #
 # Supply chain
 # * Base images are pinned by the digest of their multi-arch image index; the tag is kept only for
@@ -50,8 +50,8 @@ RUN python -m pip uninstall --yes pip
 # ---- Stage 2: runtime (no compilers) ---------------------------------------------------------
 FROM python:3.12.14-slim-trixie@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea AS runtime
 
-LABEL org.opencontainers.image.title="warden-x-api" \
-      org.opencontainers.image.description="Warden X software supply-chain security API" \
+LABEL org.opencontainers.image.title="warden-api" \
+      org.opencontainers.image.description="Warden software supply-chain security API" \
       org.opencontainers.image.source="https://github.com/rakshit-737/warden-supply-chain-security" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.base.name="docker.io/library/python:3.12.14-slim-trixie" \

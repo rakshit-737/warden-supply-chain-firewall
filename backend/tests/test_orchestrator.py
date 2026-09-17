@@ -80,7 +80,7 @@ def make_ctx(name="demo", version="1.0.0", **kw) -> PackageContext:
 
 
 class Fetcher:
-    """Warden X signature: build_context(name, version, options)."""
+    """Warden 2 signature: build_context(name, version, options)."""
 
     def __init__(self, ctx: PackageContext | None = None) -> None:
         self.ctx = ctx

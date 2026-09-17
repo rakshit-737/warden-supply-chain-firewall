@@ -45,7 +45,7 @@ describe("role permissions mirror SPEC section 6", () => {
 });
 
 describe("role handling", () => {
-  it("maps v1 role names to their Warden X equivalents", () => {
+  it("maps v1 role names to their current equivalents", () => {
     expect(normalizeRole("analyst")).toBe("security_analyst");
     expect(normalizeRole(" Viewer ")).toBe("read_only");
     expect(hasPermission("viewer", PERMISSIONS.SCAN_CREATE)).toBe(false);

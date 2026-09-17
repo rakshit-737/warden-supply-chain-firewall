@@ -1,4 +1,4 @@
-# Warden X policy: staging (balanced).
+# Warden policy: staging (balanced).
 #
 # Blocks high-confidence malicious evidence (confidence >= 0.8), install-time execution hooks and
 # known-exploited (CISA KEV) vulnerabilities; critical and high vulnerabilities and heuristic

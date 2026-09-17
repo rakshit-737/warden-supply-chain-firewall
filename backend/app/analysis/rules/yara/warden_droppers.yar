@@ -1,5 +1,5 @@
 /*
- * Warden X packaged YARA rules: download-and-execute droppers.
+ * Warden packaged YARA rules: download-and-execute droppers.
  *
  * Namespace: warden_droppers. Metadata schema, scopes and fast-mode constraints are
  * documented in README.md next to this file; app/analysis/rules validates them at import.
@@ -13,7 +13,7 @@ rule WX_DROP_Shell_Script_Curl_Pipe_Shell
     meta:
         id = "WX-YARA-030"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "Shell script pipes a curl/wget download straight into a shell interpreter"
         severity = "high"
@@ -39,7 +39,7 @@ rule WX_DROP_Python_Shell_Download_Execute
     meta:
         id = "WX-YARA-031"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "Python code runs a shell command that pipes a curl/wget download into a shell interpreter"
         severity = "high"
@@ -64,7 +64,7 @@ rule WX_DROP_PowerShell_Download_Cradle
     meta:
         id = "WX-YARA-032"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "PowerShell download cradle: Invoke-Expression (IEX) evaluating content fetched with DownloadString, Invoke-WebRequest or Invoke-RestMethod"
         severity = "high"
@@ -89,7 +89,7 @@ rule WX_DROP_PowerShell_Hidden_Encoded_Execution
     meta:
         id = "WX-YARA-033"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "Launches PowerShell with a hidden window and an encoded command, or with a hidden window, execution-policy bypass and a download"
         severity = "critical"

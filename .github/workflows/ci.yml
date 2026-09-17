@@ -1,4 +1,4 @@
-# Continuous integration for Warden X.
+# Continuous integration for Warden.
 #
 # Supply-chain hardening of this workflow:
 #   - Every action is pinned to a full 40-character commit SHA. The trailing comment is the release

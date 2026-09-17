@@ -1,6 +1,6 @@
 """Risk Engine 2.0 — multi-dimensional, explainable package risk.
 
-v1 produced one number. Warden X keeps that number (``final_score``, 0–100, same severity
+v1 produced one number. Warden keeps that number (``final_score``, 0–100, same severity
 bands) but derives it from separately reported **dimensions**, so "this package behaves
 maliciously" is distinguishable from "this package is benign but has a known CVE", and
 "no vulnerabilities" is distinguishable from "vulnerability intelligence was unavailable".

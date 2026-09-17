@@ -1,7 +1,7 @@
 {
   "uid": "warden-soc",
   "title": "Warden SOC",
-  "description": "Warden X supply-chain security operations: scans, decisions, analyzers, API health, intelligence, policy and security events.",
+  "description": "Warden supply-chain security operations: scans, decisions, analyzers, API health, intelligence, policy and security events.",
   "tags": [
     "warden",
     "security",

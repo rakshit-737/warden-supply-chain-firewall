@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.26.0@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
 #
-# Warden X dashboard image: Vite production build served by unprivileged nginx on port 8080.
+# Warden dashboard image: Vite production build served by unprivileged nginx on port 8080.
 #
 # Base images are pinned by multi-arch index digest (tag kept for readability); Dependabot moves the
 # tag and the digest together (see deploy/README.md):
@@ -24,8 +24,8 @@ RUN npm run build
 # ---- Stage 2: serve with unprivileged nginx --------------------------------------------------
 FROM nginxinc/nginx-unprivileged:1.30.5-alpine3.24@sha256:daa17b944bac2b578e962da4c61ad72a59233b3c63abea17113acaf4e6b9aea4 AS runtime
 
-LABEL org.opencontainers.image.title="warden-x-web" \
-      org.opencontainers.image.description="Warden X security dashboard (static SPA and API reverse proxy)" \
+LABEL org.opencontainers.image.title="warden-web" \
+      org.opencontainers.image.description="Warden security dashboard (static SPA and API reverse proxy)" \
       org.opencontainers.image.source="https://github.com/rakshit-737/warden-supply-chain-security" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.base.name="docker.io/nginxinc/nginx-unprivileged:1.30.5-alpine3.24" \

@@ -58,7 +58,7 @@ describe("validateRegistration", () => {
 });
 
 describe("describeRole", () => {
-  it("shows v1 role names as their Warden X role and keeps the reported name", () => {
+  it("shows v1 role names as their current role and keeps the reported name", () => {
     expect(describeRole("analyst")).toEqual({ role: "security_analyst", label: "Security analyst", reportedAs: "analyst" });
     expect(describeRole("viewer")).toEqual({ role: "read_only", label: "Read only", reportedAs: "viewer" });
     expect(describeRole("auditor")).toEqual({ role: "auditor", label: "Auditor", reportedAs: null });

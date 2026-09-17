@@ -1,5 +1,5 @@
 /*
- * Warden X packaged YARA rules: credential theft from browsers and chat clients.
+ * Warden packaged YARA rules: credential theft from browsers and chat clients.
  *
  * Namespace: warden_credential_theft. Metadata schema, scopes and fast-mode constraints are
  * documented in README.md next to this file; app/analysis/rules validates them at import.
@@ -12,7 +12,7 @@ rule WX_CRED_Chromium_Master_Key_Decryption
     meta:
         id = "WX-YARA-010"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "Reads the Chromium 'Local State' encrypted_key and decrypts it with DPAPI CryptUnprotectData (browser master-key theft)"
         severity = "critical"
@@ -38,7 +38,7 @@ rule WX_CRED_Chromium_Login_Data_Passwords
     meta:
         id = "WX-YARA-011"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "Opens a Chromium 'Login Data' SQLite database and reads the saved password_value column"
         severity = "critical"
@@ -65,7 +65,7 @@ rule WX_CRED_Firefox_Credential_Store
     meta:
         id = "WX-YARA-012"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "References both Firefox credential stores: the NSS key database key4.db and the saved-logins file logins.json"
         severity = "critical"
@@ -90,7 +90,7 @@ rule WX_CRED_Discord_Token_Grabber_Webhook
     meta:
         id = "WX-YARA-013"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "Discord token harvesting (token regex, encrypted-token prefix or client LevelDB storage path) combined with a Discord webhook for exfiltration"
         severity = "critical"

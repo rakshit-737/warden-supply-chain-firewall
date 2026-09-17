@@ -88,7 +88,7 @@ describe("FindingCard", () => {
     expect(screen.getByText(/<script>alert/)).toBeInTheDocument();
   });
 
-  it("renders a v1 signal without inventing Warden X details", () => {
+  it("renders a v1 signal without inventing newer details", () => {
     render(
       <FindingCard
         finding={{ code: "NETWORK_EGRESS", severity: "medium", weight: 3, message: "Opens network connections", evidence: {} }}

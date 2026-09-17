@@ -1,4 +1,4 @@
-"""Hybrid malicious-risk scoring (v1 rule/ML fusion, preserved for Warden X).
+"""Hybrid malicious-risk scoring (v1 rule/ML fusion, preserved for Warden 2).
 
 Two independent scores are produced and fused:
 

@@ -1,4 +1,4 @@
-# Grafana dashboard provisioning for the Warden X "observability" Compose profile.
+# Grafana dashboard provisioning for the Warden "observability" Compose profile.
 # Dashboards are loaded read-only from deploy/grafana/dashboards (mounted at the path below).
 # UI edits are not persisted: change the JSON in the repository instead, so dashboards stay reviewed.
 apiVersion: 1
@@ -6,7 +6,7 @@ apiVersion: 1
 providers:
   - name: warden
     orgId: 1
-    folder: Warden X
+    folder: Warden
     type: file
     disableDeletion: true
     allowUiUpdates: false

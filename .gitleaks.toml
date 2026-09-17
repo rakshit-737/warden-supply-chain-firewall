@@ -1,4 +1,4 @@
-# Gitleaks configuration for Warden X.
+# Gitleaks configuration for Warden.
 #
 # Used by:
 #   - .github/workflows/security.yml  full git-history scan with the pinned gitleaks v8.30.1 binary
@@ -13,14 +13,14 @@
 # The path regexes accept both "/" and "\" as separators so the same file works for CI (Linux) and for
 # pre-commit on Windows developer machines. An optional leading "./" is tolerated for `gitleaks dir .`.
 
-title = "Warden X gitleaks configuration"
+title = "Warden gitleaks configuration"
 
 [extend]
 useDefault = true
 
 # --- 1. Synthetic credentials in the backend test suite ---------------------------------------------
 #
-# Why: Warden X ships a secrets analyzer and a redaction layer (backend/app/core/redaction.py). Their
+# Why: Warden ships a secrets analyzer and a redaction layer (backend/app/core/redaction.py). Their
 # tests push realistic-looking but synthetic credentials (dummy API keys, throwaway PEM blocks,
 # test-only passwords such as those in backend/tests/conftest.py) through the detectors to prove they
 # are found and redacted.

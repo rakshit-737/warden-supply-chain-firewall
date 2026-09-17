@@ -52,7 +52,7 @@ from app.core.redaction import sanitize_text
 
 log = get_logger("warden.http")
 
-USER_AGENT = "Warden-X/2.0 (+https://github.com/rakshit-737/warden-supply-chain-security)"
+USER_AGENT = "Warden/2.0 (+https://github.com/rakshit-737/warden-supply-chain-security)"
 _RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 # ASCII digits only: str.isdigit() also accepts e.g. "²", which int()/float() then reject.

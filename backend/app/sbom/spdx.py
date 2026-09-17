@@ -66,7 +66,7 @@ def build(
 ) -> dict:
     """Build an SPDX 2.3 JSON document (as a dict) for ``inventory``."""
     created = format_timestamp(timestamp)
-    tool = f"Tool: warden-x-{sanitize_id_part(tool_version)}"
+    tool = f"Tool: warden-{sanitize_id_part(tool_version)}"
     components: dict[str, Component] = {}
     for c in sorted(inventory.components, key=lambda c: c.bom_ref):
         components.setdefault(c.bom_ref, c)

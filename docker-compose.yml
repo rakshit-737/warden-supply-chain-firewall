@@ -1,4 +1,4 @@
-# Warden X - hardened Docker Compose deployment.
+# Warden - hardened Docker Compose deployment.
 #
 #   cp .env.example .env                              # fill in every REQUIRED value
 #   docker compose up -d --build
@@ -40,7 +40,7 @@ x-hardening: &hardening
       max-file: "5"
 
 x-api-image: &api-image
-  image: warden-x-api:local
+  image: warden-api:local
   build:
     context: ./backend
   # Docker's init (tini) runs as PID 1 and reaps child processes (e.g. optional external analysis tools).
@@ -217,7 +217,7 @@ services:
 
   web:
     <<: *hardening
-    image: warden-x-web:local
+    image: warden-web:local
     build:
       context: ./frontend
     # Only orders the first `up`. nginx re-resolves `api` at runtime (frontend/nginx.conf), so web keeps

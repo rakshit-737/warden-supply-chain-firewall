@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.0.0 — Warden X
+## 2.0.0
 
 Warden grows from a package firewall into a supply-chain security platform. Package code is still
 never executed.

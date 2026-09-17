@@ -1,5 +1,5 @@
 /*
- * Warden X packaged YARA rules: persistence.
+ * Warden packaged YARA rules: persistence.
  *
  * Namespace: warden_persistence. Metadata schema, scopes and fast-mode constraints are
  * documented in README.md next to this file; app/analysis/rules validates them at import.
@@ -13,7 +13,7 @@ rule WX_PERSIST_Cron_Entry_With_Remote_Payload
     meta:
         id = "WX-YARA-040"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "Installs a cron entry whose command downloads, decodes or connects out (curl/wget pipe, /dev/tcp, base64 -d)"
         severity = "critical"
@@ -39,7 +39,7 @@ rule WX_PERSIST_Systemd_Service_With_Remote_Payload
     meta:
         id = "WX-YARA-041"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "Writes a systemd unit whose ExecStart downloads, decodes, or runs from a temporary directory"
         severity = "critical"
@@ -65,7 +65,7 @@ rule WX_PERSIST_Windows_Run_Key_Autostart
     meta:
         id = "WX-YARA-042"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "Writes a value under the Windows CurrentVersion Run/RunOnce autostart registry keys"
         severity = "high"
@@ -90,7 +90,7 @@ rule WX_PERSIST_Shell_Profile_Remote_Payload
     meta:
         id = "WX-YARA-043"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "Appends a command that downloads, decodes or connects out to a shell start-up profile (.bashrc, .zshrc, .profile)"
         severity = "critical"

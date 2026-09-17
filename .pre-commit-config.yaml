@@ -1,4 +1,4 @@
-# pre-commit hooks for Warden X.
+# pre-commit hooks for Warden.
 #
 #   pip install "pre-commit>=3.2.0" && pre-commit install
 #   pre-commit run --all-files

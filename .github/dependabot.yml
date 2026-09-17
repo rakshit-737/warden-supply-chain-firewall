@@ -1,4 +1,4 @@
-# Dependabot version updates for Warden X.
+# Dependabot version updates for Warden.
 #
 # - Checks run weekly. Minor and patch updates are grouped into one PR per ecosystem entry;
 #   major updates still arrive as individual PRs so breaking changes are reviewed on their own.

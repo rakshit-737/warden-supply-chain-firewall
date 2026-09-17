@@ -1,5 +1,5 @@
 /*
- * Warden X packaged YARA rules: cryptocurrency miners.
+ * Warden packaged YARA rules: cryptocurrency miners.
  *
  * Namespace: warden_cryptominers. Metadata schema, scopes and fast-mode constraints are
  * documented in README.md next to this file; app/analysis/rules validates them at import.
@@ -13,7 +13,7 @@ rule WX_MINER_Stratum_Pool_With_Miner_Software
     meta:
         id = "WX-YARA-060"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "Mining-pool connection details (stratum URL or well-known pool host) combined with cryptocurrency-miner software names or options"
         severity = "high"

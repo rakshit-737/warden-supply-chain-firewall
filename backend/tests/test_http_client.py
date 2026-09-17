@@ -478,7 +478,7 @@ def test_default_headers_and_caller_headers() -> None:
     client, _ = make_client(script)
     client.get_json("https://pypi.org/x", headers={"Accept": "application/vnd.pypi.simple.v1+json"})
     sent = script.requests[0].headers
-    assert sent["user-agent"].startswith("Warden-X/")
+    assert sent["user-agent"].startswith("Warden/")
     assert sent["accept"] == "application/vnd.pypi.simple.v1+json"
 
 

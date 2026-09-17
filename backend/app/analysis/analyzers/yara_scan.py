@@ -1,4 +1,4 @@
-"""YARA analysis layer: packaged Warden X signatures plus optional organisational rules.
+"""YARA analysis layer: packaged Warden signatures plus optional organisational rules.
 
 What is scanned
 ===============

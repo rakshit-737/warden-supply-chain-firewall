@@ -3,14 +3,14 @@ import { ROLE_LABELS, normalizeRole } from "../../auth/permissions";
 import type { SelectOption } from "../../components/SelectField";
 
 export interface RoleDisplay {
-  /** Canonical Warden X role, or null when the server sent a name this console does not know. */
+  /** Canonical current role, or null when the server sent a name this console does not know. */
   role: UserRole | null;
   label: string;
   /** The name exactly as the server sent it, when that is not the canonical name (a v1 name such as "analyst"). */
   reportedAs: string | null;
 }
 
-/** Display form of a role as the API returned it. v1 names are shown as their Warden X role. */
+/** Display form of a role as the API returned it. v1 names are shown as their current role. */
 export function describeRole(value: unknown): RoleDisplay {
   const text = typeof value === "string" ? value : "";
   const role = normalizeRole(text);

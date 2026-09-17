@@ -1,4 +1,4 @@
-# Build context for the Warden X dashboard image. Dependencies are always installed inside the build
+# Build context for the Warden dashboard image. Dependencies are always installed inside the build
 # from package-lock.json (npm ci); nothing from a workstation's node_modules or local env files is sent.
 node_modules
 dist

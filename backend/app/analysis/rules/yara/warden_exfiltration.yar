@@ -1,5 +1,5 @@
 /*
- * Warden X packaged YARA rules: exfiltration of harvested credentials.
+ * Warden packaged YARA rules: exfiltration of harvested credentials.
  *
  * Namespace: warden_exfiltration. Metadata schema, scopes and fast-mode constraints are
  * documented in README.md next to this file; app/analysis/rules validates them at import.
@@ -13,7 +13,7 @@ rule WX_EXFIL_Telegram_Bot_Credential_Exfiltration
     meta:
         id = "WX-YARA-050"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "Sends data through the Telegram Bot API from code that also dumps the environment or names credential stores"
         severity = "critical"
@@ -40,7 +40,7 @@ rule WX_EXFIL_Discord_Webhook_Credential_Exfiltration
     meta:
         id = "WX-YARA-051"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "Posts to a Discord webhook from code that also dumps the environment or names credential stores"
         severity = "critical"
@@ -66,7 +66,7 @@ rule WX_EXFIL_Environment_Dump_With_Host_Identity
     meta:
         id = "WX-YARA-052"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "Serialises the whole process environment together with host identity (hostname, user name) in code that sends HTTP requests"
         severity = "high"

@@ -1,6 +1,6 @@
 # Runtime dependencies (pinned for reproducible builds).
 # Security: pins are audited with pip-audit in CI; v1 pins of starlette (via fastapi),
-# PyJWT and python-multipart carried published advisories and were upgraded for Warden X.
+# PyJWT and python-multipart carried published advisories and were upgraded for Warden.
 fastapi==0.141.1
 starlette==1.6.0
 uvicorn[standard]==0.53.0
@@ -19,7 +19,7 @@ scikit-learn==1.9.1
 joblib==1.6.0
 numpy==2.5.3
 python-multipart==0.0.32
-# Warden X additions — each is a mature, widely-used, permissively-licensed library:
+# Warden 2 additions — each is a mature, widely-used, permissively-licensed library:
 packaging==26.3          # PyPA reference implementation of PEP 440/508 (versions, specifiers, markers)
 PyYAML==6.0.3            # policy-as-code documents (safe_load only)
 networkx==3.6.1          # dependency-graph metrics (dominators, centrality)

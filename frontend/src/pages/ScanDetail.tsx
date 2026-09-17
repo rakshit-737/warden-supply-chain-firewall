@@ -144,7 +144,7 @@ function ScanReport({ scan }: { scan: Scan }) {
         </div>
         {predatesWardenX && (
           <p className="rounded-r-md border-l-2 border-line-strong bg-panel px-4 py-2.5 text-ink-secondary">
-            This scan was recorded without Warden X analysis data, so risk dimensions, attack chains, vulnerability
+            This scan was recorded by Warden 1, without the newer analysis data, so risk dimensions, attack chains, vulnerability
             intelligence, provenance and analyzer runs are not available for it.
           </p>
         )}

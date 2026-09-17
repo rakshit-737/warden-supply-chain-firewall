@@ -1,6 +1,6 @@
 """Policy engine v2 — maps an analysis result to an enforcement decision (allow / warn / block).
 
-``evaluate(result, policy)`` keeps its v1 signature; Warden X adds keyword arguments::
+``evaluate(result, policy)`` keeps its v1 signature; Warden adds keyword arguments::
 
     evaluate(result, policy, *, exceptions=(), environment=None, now=None) -> PolicyDecision
 

@@ -36,7 +36,7 @@ from app.sbom.models import Component, ProjectInventory
 
 SPEC_VERSION = "1.6"
 SCHEMA_URL = "http://cyclonedx.org/schema/bom-1.6.schema.json"
-TOOL_NAME = "Warden X"
+TOOL_NAME = "Warden"
 _SERIAL_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "https://github.com/rakshit-737/warden-supply-chain-firewall/cyclonedx")
 
 _SCOPE_MAP = {"required": "required", "optional": "optional", "dev": "excluded"}

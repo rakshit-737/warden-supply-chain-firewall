@@ -1,4 +1,4 @@
-"""Analyzer protocol and the shared package context (Warden X contract).
+"""Analyzer protocol and the shared package context (Warden 2 contract).
 
 An ``Analyzer`` is a pure function object: given a ``PackageContext`` (already-fetched
 metadata, a bounded inventory of archive members, and decoded source files), it returns a
@@ -42,7 +42,7 @@ class InventoryEntry:
     mode: int | None = None  # permission bits from the archive header, if any
     retained: bool = False  # True when text is in ``files`` or bytes are in ``binaries``
     skipped_reason: str | None = None  # e.g. "too_large", "unsafe_path", "symlink"
-    # Additive (Warden X): member type claimed by archive metadata when it contradicts how installers
+    # Additive (Warden 2): member type claimed by archive metadata when it contradicts how installers
     # treat the member (e.g. a zip entry with symlink mode bits that pip writes as a regular file).
     declared_kind: str | None = None
 
@@ -152,7 +152,7 @@ class Analyzer(Protocol):
 
 
 class BaseAnalyzer:
-    """Convenience base: declares the optional Warden X analyzer attributes with defaults.
+    """Convenience base: declares the optional Warden 2 analyzer attributes with defaults.
 
     Subclasses set ``name`` and ``version`` and implement ``analyze``. The orchestrator stamps
     ``analyzer``/``analyzer_version`` and taxonomy defaults onto every returned finding.

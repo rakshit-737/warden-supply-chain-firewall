@@ -11,7 +11,7 @@ is preserved because the orchestrator emits findings in registry order, which ke
 output deterministic even though analyzers run concurrently.
 
 Built-in analyzers are listed in ``ALL_ANALYZERS`` below: the six v1 analyzers first (their
-order is a compatibility contract), then the Warden X analyzers. Constructing them performs
+order is a compatibility contract), then the Warden analyzers. Constructing them performs
 no I/O; the vulnerability analyzer resolves its intelligence service lazily and is skipped by
 the orchestrator in offline scans (``requires_network``). Further analyzers (e.g. optional
 external-tool adapters) can be added at runtime with :func:`register_analyzer`.
@@ -49,7 +49,7 @@ ALL_ANALYZERS: list[Analyzer] = [
     InstallScriptAnalyzer(),
     ObfuscationAnalyzer(),
     IOCAnalyzer(),
-    # Warden X analyzers. Names must match app.analysis.risk.DIMENSION_ANALYZERS /
+    # Warden 2 analyzers. Names must match app.analysis.risk.DIMENSION_ANALYZERS /
     # VULNERABILITY_ANALYZER_NAMES so their dimensions read as "examined" when they ran.
     InventoryAnalyzer(),
     InstallVectorsAnalyzer(),

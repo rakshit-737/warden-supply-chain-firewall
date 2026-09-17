@@ -1,4 +1,4 @@
-# Warden X project scan as a GitHub Action.
+# Warden project scan as a GitHub Action.
 #
 # Runs `warden project scan` against a checked-out repository: manifest hygiene (unpinned
 # dependencies, missing hashes, ambiguous package indexes) and dependency-confusion checks.
@@ -20,7 +20,7 @@
 #         path: .
 #         fail-on: high
 
-name: Warden X project scan
+name: Warden project scan
 description: Scan dependency manifests for supply-chain hygiene and dependency-confusion risks, with SARIF output.
 author: rakshit-737
 branding:

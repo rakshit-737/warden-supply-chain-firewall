@@ -1,4 +1,4 @@
-"""Unified security finding model — the contract every Warden X analyzer emits.
+"""Unified security finding model — the contract every Warden analyzer emits.
 
 Built-in AST analysis, YARA, Semgrep, secrets detection, vulnerability intelligence,
 provenance, release diffing and attack-chain correlation all produce ``Finding`` objects.
@@ -159,7 +159,7 @@ class Finding:
     evidence: dict = field(default_factory=dict)
     # Capability tag used by the policy engine for hard capability blocks.
     capability: str | None = None
-    # --- Warden X fields (keyword-only) ---------------------------------------------
+    # --- Warden 2 fields (keyword-only) ---------------------------------------------
     confidence: float = field(default=0.8, kw_only=True)
     category: str | None = field(default=None, kw_only=True)
     title: str | None = field(default=None, kw_only=True)
@@ -255,7 +255,7 @@ class Finding:
             "message": self.message,
             "evidence": self.evidence,
             "capability": self.capability,
-            # Warden X keys
+            # Warden keys
             "finding_id": self.finding_id,
             "confidence": self.confidence,
             "category": self.category,

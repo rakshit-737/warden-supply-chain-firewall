@@ -1,5 +1,5 @@
 /**
- * Warden X console palette (dark only). Colour values for chart code that needs raw values
+ * Warden console palette (dark only). Colour values for chart code that needs raw values
  * (Recharts). Tailwind reads the same values from the @theme block in src/index.css;
  * palette.test.ts keeps the two in sync.
  *

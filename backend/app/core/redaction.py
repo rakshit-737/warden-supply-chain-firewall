@@ -106,7 +106,7 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     )),
 )
 
-# Warden X additions. Kept in a separate tuple so ``SECRET_PATTERNS`` stays the stable v1 set;
+# Warden 2 additions. Kept in a separate tuple so ``SECRET_PATTERNS`` stays the stable v1 set;
 # ``ALL_SECRET_PATTERNS`` (below) is what every function in this module applies.
 # Key-anchored formats: only the value after the key is redacted. They run right after
 # ``url_credentials`` (see module docstring for why).

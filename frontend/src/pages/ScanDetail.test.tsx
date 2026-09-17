@@ -14,7 +14,7 @@ vi.mock("../api/scans", () => ({
   getScanReport: vi.fn(),
 }));
 
-// Test fixtures: hand-written scans in the v1 and Warden X response shapes, not real results.
+// Test fixtures: hand-written scans in the v1 and Warden response shapes, not real results.
 const V1_SCAN: Scan = {
   id: "11111111-1111-4111-8111-111111111111",
   ecosystem: "pypi",
@@ -138,14 +138,14 @@ function renderScan(scan: Scan) {
 }
 
 describe("ScanDetail", () => {
-  it("renders a v1 scan and says which Warden X data was not collected", async () => {
+  it("renders a v1 scan and says which newer data was not collected", async () => {
     const user = userEvent.setup();
     renderScan(V1_SCAN);
 
     expect(await screen.findByText("Block")).toBeInTheDocument();
     expect(vi.mocked(getScan)).toHaveBeenCalledWith(V1_SCAN.id, expect.anything());
     expect(screen.getByRole("meter", { name: "Final risk score" })).toHaveAttribute("aria-valuenow", "95");
-    expect(screen.getByText(/recorded without Warden X analysis data/)).toBeInTheDocument();
+    expect(screen.getByText(/recorded by Warden 1, without the newer analysis data/)).toBeInTheDocument();
     expect(screen.getByText("block_threshold")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "setup.py runs code at install time" })).toBeInTheDocument();
 
@@ -162,12 +162,12 @@ describe("ScanDetail", () => {
     expect(screen.getByText("Vulnerability intelligence was not recorded for this scan.")).toBeInTheDocument();
   });
 
-  it("renders Warden X risk, chains, vulnerabilities, provenance and analyzer runs", async () => {
+  it("renders Warden 2 risk, chains, vulnerabilities, provenance and analyzer runs", async () => {
     const user = userEvent.setup();
     renderScan(WARDEN_X_SCAN);
 
     expect(await screen.findByRole("heading", { name: "Install hook executes code" })).toBeInTheDocument();
-    expect(screen.queryByText(/recorded without Warden X analysis data/)).toBeNull();
+    expect(screen.queryByText(/recorded by Warden 1, without the newer analysis data/)).toBeNull();
     expect(screen.getByText("setup.py:12")).toBeInTheDocument();
     expect(screen.getByText("Risk 95 is at or above 70")).toBeInTheDocument();
 

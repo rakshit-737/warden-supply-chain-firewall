@@ -1,4 +1,4 @@
-# Warden X deployment
+# Warden deployment
 
 Hardened Docker Compose stack: `web` (nginx: dashboard + API reverse proxy) → `api` (FastAPI) →
 `db` (PostgreSQL 16) and `cache` (Redis 7). A one-shot `migrate` job applies database migrations
@@ -128,7 +128,7 @@ own probes are deliberately not reachable through `web`.
 - Prometheus discovers every api container through Docker DNS and scrapes each on port 8000 every
   15 s, keeping 15 days / 2 GB of data. It publishes no host port.
 - Grafana provisions the `warden-prometheus` datasource and a read-only **Warden SOC** dashboard (folder
-  "Warden X"). To change the dashboard, edit `deploy/grafana/dashboards/warden-soc.json`; it reloads
+  "Warden"). To change the dashboard, edit `deploy/grafana/dashboards/warden-soc.json`; it reloads
   within 60 s.
 - **API metrics scrape** (first panel) shows Down when any api container cannot be scraped or none is
   discovered. **Packages scanned** and **Blocked packages** then show "no data" instead of 0.

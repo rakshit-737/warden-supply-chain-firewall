@@ -1,4 +1,4 @@
-# Grafana datasource provisioning for the Warden X "observability" Compose profile.
+# Grafana datasource provisioning for the Warden "observability" Compose profile.
 # The fixed uid lets the Warden SOC dashboard default its ${datasource} variable to this source.
 apiVersion: 1
 

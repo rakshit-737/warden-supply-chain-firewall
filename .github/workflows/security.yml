@@ -1,4 +1,4 @@
-# Scheduled / on-demand security analysis of the Warden X repository itself.
+# Scheduled / on-demand security analysis of the Warden repository itself.
 #
 #   codeql                CodeQL for Python and JavaScript/TypeScript with the security-extended query suite
 #   gitleaks              secret scan over the FULL git history, configured by .gitleaks.toml
@@ -213,7 +213,7 @@ jobs:
       - name: Extract image references
         id: list
         # Third-party images in docker-compose.yml are pinned as name:tag@sha256:<digest>; the images
-        # built from this repository (warden-x-*:local) carry no digest and are scanned in ci.yml.
+        # built from this repository (warden-*:local) carry no digest and are scanned in ci.yml.
         run: |
           set -euo pipefail
           images="$(sed -n 's/^[[:space:]]*image:[[:space:]]*\([^[:space:]#]*@sha256:[0-9a-f]\{64\}\)[[:space:]]*$/\1/p' docker-compose.yml | sort -u)"

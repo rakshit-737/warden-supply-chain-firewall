@@ -11,7 +11,7 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    document.title = "Sign in | Warden X";
+    document.title = "Sign in | Warden";
   }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {

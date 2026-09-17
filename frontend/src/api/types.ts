@@ -1,10 +1,10 @@
 /**
- * Warden / Warden X API types.
+ * Warden / Warden API types.
  *
  * Compatibility rules:
  * - v1 shapes (Scan, Signal, Policy, ScanSummary, ScanStats, Page) keep every v1 field with its
- *   v1 type. Every Warden X field added to a v1 response is OPTIONAL, because scans recorded
- *   before Warden X (and a backend that has not been upgraded yet) do not carry them.
+ *   v1 type. Every Warden 2 field added to a v1 response is OPTIONAL, because scans recorded
+ *   before Warden 2 (and a backend that has not been upgraded yet) do not carry them.
  * - Shapes follow .warden-x/SPEC.md sections 3-13 and the backend contracts that exist today
  *   (analysis/findings.py, analysis/risk.py, intel/models.py, graph/engine.py, events/types.py).
  * - Where the spec leaves a shape open (attack chains, provenance summary, system and model
@@ -28,11 +28,11 @@ export const ENVIRONMENTS = ["development", "staging", "production"] as const;
 export type Environment = (typeof ENVIRONMENTS)[number];
 
 export const USER_ROLES = ["admin", "security_analyst", "developer", "auditor", "read_only"] as const;
-/** Warden X role names (SPEC section 5/6). */
+/** Warden role names (SPEC section 5/6). */
 export type UserRole = (typeof USER_ROLES)[number];
 /** v1 role names. The server maps analyst -> security_analyst and viewer -> read_only. */
 export type LegacyRole = "analyst" | "viewer";
-/** A role as the API may return it: Warden X names, or v1 names from a backend not yet migrated. */
+/** A role as the API may return it: Warden names, or v1 names from a backend not yet migrated. */
 export type Role = UserRole | LegacyRole;
 
 /** Finding categories (backend `analysis.findings.Category`). */
@@ -125,7 +125,7 @@ export interface User {
   id: string;
   /** Stored lower case. */
   email: string;
-  /** A Warden X server returns the canonical name; a v1 server may still return analyst or viewer. */
+  /** A current server returns the canonical name; a v1 server may still return analyst or viewer. */
   role: Role;
   is_active: boolean;
   created_at: string;
@@ -169,7 +169,7 @@ export interface ListUsersParams extends PageParams {
 // Findings (SPEC section 1 "Finding conventions"; backend analysis/findings.py)
 // ---------------------------------------------------------------------------------------------
 
-/** v1 signal. Every Warden X finding is also a valid Signal. */
+/** v1 signal. Every Warden finding is also a valid Signal. */
 export interface Signal {
   code: string;
   severity: Severity;
@@ -191,7 +191,7 @@ export type ComplianceFramework = "cwe" | "attack" | "owasp_top10_2021" | "nist_
 export type ComplianceMappings = Partial<Record<ComplianceFramework, string[]>>;
 
 /**
- * Warden X finding. Extends the v1 Signal; the extra keys are optional because v1 scans
+ * Warden finding. Extends the v1 Signal; the extra keys are optional because v1 scans
  * only stored code/severity/weight/message/evidence.
  */
 export interface Finding extends Signal {
@@ -428,7 +428,7 @@ export interface Policy {
   denylist: string[];
   created_at: string;
   updated_at: string | null;
-  // Warden X additions (optional for v1 backends).
+  // Warden 2 additions (optional for v1 backends).
   environment?: string;
   document?: PolicyDocument | null;
   version?: number;
@@ -551,7 +551,7 @@ export interface Scan {
   duration_ms: number;
   created_at: string;
   signals: Finding[];
-  // --- Warden X additions: optional, absent on v1 scans ---------------------------------
+  // --- Warden 2 additions: optional, absent on v1 scans ---------------------------------
   risk?: RiskBreakdown | null;
   attack_chains?: AttackChain[] | null;
   analyzer_runs?: AnalyzerRun[] | null;
@@ -577,7 +577,7 @@ export interface ScanSummary {
   severity: Severity;
   decision: Decision;
   created_at: string;
-  // Warden X additions.
+  // Warden 2 additions.
   environment?: string | null;
   vulnerability_risk?: number | null;
   malicious_risk?: number | null;
@@ -592,7 +592,7 @@ export interface ScanStats {
   top_signals: { code: string; count: number }[];
 }
 
-/** Options recorded on a Warden X scan (`scan_options`). POST /scans does not accept them today. */
+/** Options recorded on a Warden scan (`scan_options`). POST /scans does not accept them today. */
 export interface ScanOptions {
   offline?: boolean;
   intel?: boolean;

@@ -102,7 +102,7 @@ def build_sbom(report: ImageReport, tool_version: str, timestamp: datetime | Non
         "version": 1,
         "metadata": {
             "timestamp": moment.isoformat().replace("+00:00", "Z"),
-            "tools": {"components": [{"type": "application", "name": "Warden X", "version": tool_version}]},
+            "tools": {"components": [{"type": "application", "name": "Warden", "version": tool_version}]},
             "component": metadata_component,
         },
         "components": components,

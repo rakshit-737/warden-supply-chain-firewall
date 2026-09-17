@@ -1,5 +1,5 @@
 /*
- * Warden X packaged YARA rules: packed executables.
+ * Warden packaged YARA rules: packed executables.
  *
  * Namespace: warden_packed_binaries. Metadata schema, scopes and fast-mode constraints are
  * documented in README.md next to this file; app/analysis/rules validates them at import.
@@ -14,7 +14,7 @@ rule WX_PACK_UPX_Packed_ELF
     meta:
         id = "WX-YARA-070"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "ELF executable carrying UPX packer markers (UPX! header plus the UPX banner)"
         severity = "medium"
@@ -41,7 +41,7 @@ rule WX_PACK_UPX_Packed_PE
     meta:
         id = "WX-YARA-071"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "PE executable whose section table contains the UPX0 and UPX1 packer sections"
         severity = "medium"

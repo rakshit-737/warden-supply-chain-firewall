@@ -1,6 +1,6 @@
 """Signal / finding code catalogue.
 
-v1 called the pipeline's common currency a ``Signal``; Warden X generalises it into the
+v1 called the pipeline's common currency a ``Signal``; Warden generalises it into the
 richer :class:`~app.analysis.findings.Finding`. ``Signal`` remains an alias so existing
 analyzers, tests and integrations keep working unchanged.
 

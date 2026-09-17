@@ -1,4 +1,4 @@
-# Warden X policy: development (advisory, warn-heavy).
+# Warden policy: development (advisory, warn-heavy).
 #
 # Only very strong evidence blocks: known malicious indicators and correlated attack chains at
 # confidence >= 0.9, or a risk score of 90+. Everything else that production blocks is reported as

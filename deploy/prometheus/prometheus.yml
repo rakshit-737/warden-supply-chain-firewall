@@ -1,4 +1,4 @@
-# Prometheus configuration for the Warden X "observability" Compose profile.
+# Prometheus configuration for the Warden "observability" Compose profile.
 #
 # Prometheus runs only on the internal `metrics` network and scrapes the API containers directly on
 # port 8000. The web (nginx) container deliberately does not proxy /metrics, so the endpoint is never

@@ -56,7 +56,7 @@ class ManifestDependency:
     direct: bool = True
     scope: str = "required"  # required | optional | dev
     group: str | None = None  # optional-dependency extra / poetry group name
-    # --- additive (Warden X SBOM engine) ---------------------------------------------
+    # --- additive (Warden 2 SBOM engine) ---------------------------------------------
     # Credential-redacted direct URL / VCS / path reference. Never fetched by Warden.
     url: str | None = None
     # requirement (declared) | constraint (pip -c, constrains but does not add) | lock (lock-file entry)
@@ -84,7 +84,7 @@ class Component:
     depth: int | None = None  # 1 = direct dependency of the project root
     introduced_by: list[str] = field(default_factory=list)  # bom_refs of direct deps pulling this in
     specifier: str = ""
-    # --- additive (Warden X SBOM engine) ---------------------------------------------
+    # --- additive (Warden 2 SBOM engine) ---------------------------------------------
     # Every distribution-file digest recorded by the manifests ("sha256:<hex>"). A release has
     # one file per wheel/sdist, so ``hashes`` (one value per algorithm) is only filled when a
     # single digest is known; SBOM builders emit ``file_hashes``.
@@ -118,7 +118,7 @@ class ProjectInventory:
     index_urls: list[str] = field(default_factory=list)
     extra_index_urls: list[str] = field(default_factory=list)
     dependencies: list[ManifestDependency] = field(default_factory=list)  # raw declarations
-    # --- additive (Warden X SBOM engine) ---------------------------------------------
+    # --- additive (Warden 2 SBOM engine) ---------------------------------------------
     # Where package indexes were configured: [{"kind", "url" (credential-redacted), "file", "line"}].
     index_sources: list[dict] = field(default_factory=list)
     # Redacted index URLs whose host is not the public PyPI registry.

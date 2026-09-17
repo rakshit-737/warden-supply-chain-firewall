@@ -1,6 +1,6 @@
 """Role-based access control: roles, permissions and the role → permission matrix.
 
-Authorisation in Warden X is expressed as *permissions* (``scan:create``, ``audit:read`` …)
+Authorisation in Warden is expressed as *permissions* (``scan:create``, ``audit:read`` …)
 rather than role names, so a route states what it needs and the mapping from roles to
 capabilities lives in exactly one reviewed table (:data:`ROLE_PERMISSIONS`). Every check is
 enforced server-side by :func:`app.api.deps.require_permission`; the frontend may hide
@@ -12,7 +12,7 @@ Design notes
   an unknown role holds none.
 * Roles are stored as plain strings (a non-native enum) so adding a role never requires a
   database enum-type migration. Legacy v1 role names are accepted on input and mapped to
-  their Warden X equivalents (``analyst`` → ``security_analyst``, ``viewer`` →
+  their current equivalents (``analyst`` → ``security_analyst``, ``viewer`` →
   ``read_only``); the mapping never grants more than the v1 role could do, except that
   v1 analysts can now also request policy exceptions and acknowledge events.
 * ``admin`` is the only role with ``user:manage`` / ``policy:write`` / ``system:write``;

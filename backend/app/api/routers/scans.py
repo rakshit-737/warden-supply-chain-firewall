@@ -1,6 +1,6 @@
 """Scan routes — submit an analysis, browse history, dashboard stats.
 
-Persistence tolerates both v1 and Warden X analysis results: new ``AnalysisResult`` fields
+Persistence tolerates both v1 and Warden analysis results: new ``AnalysisResult`` fields
 are read with ``getattr`` defaults and new finding keys with ``dict.get`` defaults, and
 string values are clipped to their column sizes so an oversized value can never fail the
 insert on PostgreSQL.

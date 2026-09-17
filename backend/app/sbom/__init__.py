@@ -1,4 +1,4 @@
-"""Warden X SBOM engine: manifest parsing, dependency inventory, CycloneDX / SPDX generation.
+"""Warden SBOM engine: manifest parsing, dependency inventory, CycloneDX / SPDX generation.
 
 Public entry points are exported lazily so that importing :mod:`app.sbom.models` (a plain data
 module shared with the graph engine) does not pull in parsers, HTTP or analysis code.

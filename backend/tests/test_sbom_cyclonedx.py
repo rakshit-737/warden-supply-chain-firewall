@@ -164,7 +164,7 @@ def test_document_header_and_metadata():
                         document["serialNumber"])
     metadata = document["metadata"]
     assert metadata["timestamp"] == TIMESTAMP
-    assert metadata["tools"]["components"] == [{"type": "application", "name": "Warden X", "version": "2.0.0"}]
+    assert metadata["tools"]["components"] == [{"type": "application", "name": "Warden", "version": "2.0.0"}]
     assert metadata["component"] == {"type": "application", "bom-ref": inventory.root_ref, "name": "fixture-project",
                                      "version": "0.3.0"}
     manifests = [p["value"] for p in metadata["properties"] if p["name"] == "warden:manifest"]

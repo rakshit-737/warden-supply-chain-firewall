@@ -1,4 +1,4 @@
-# Warden X policy: production (strict).
+# Warden policy: production (strict).
 #
 # Blocks strong malicious evidence (findings at confidence >= 0.7 in malicious, IOC, attack-chain
 # and dependency-confusion categories), install-time execution hooks, known-exploited (CISA KEV)

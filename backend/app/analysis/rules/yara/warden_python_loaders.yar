@@ -1,5 +1,5 @@
 /*
- * Warden X packaged YARA rules: Python decode-then-execute loaders.
+ * Warden packaged YARA rules: Python decode-then-execute loaders.
  *
  * Namespace: warden_python_loaders. Metadata schema, scopes and fast-mode constraints are
  * documented in README.md next to this file; app/analysis/rules validates them at import.
@@ -12,7 +12,7 @@ rule WX_PY_Exec_Base64_Decoded_Payload
     meta:
         id = "WX-YARA-001"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "Python exec/eval applied directly to a base64/base32/base85/hex-decoded payload"
         severity = "critical"
@@ -39,7 +39,7 @@ rule WX_PY_Exec_Decompressed_Or_Unmarshalled_Code
     meta:
         id = "WX-YARA-002"
         version = "1.0.0"
-        author = "Warden X"
+        author = "Warden"
         date = "2026-09-16"
         description = "Python exec/eval applied directly to decompressed (zlib/lzma/bz2/gzip) or unmarshalled (marshal) data"
         severity = "critical"

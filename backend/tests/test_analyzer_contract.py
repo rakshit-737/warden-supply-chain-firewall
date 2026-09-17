@@ -1,4 +1,4 @@
-"""Analyzer contract tests: the six v1 analyzers on the Warden X ``Finding`` contract.
+"""Analyzer contract tests: the six v1 analyzers on the Warden 2 ``Finding`` contract.
 
 For each migrated analyzer these tests pin registry membership and selection, name and
 version, confidence and provenance per the SPEC guidance, the unchanged v1 weights and

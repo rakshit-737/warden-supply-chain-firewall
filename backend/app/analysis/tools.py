@@ -1,6 +1,6 @@
 """External analysis-tool discovery and a hardened subprocess runner.
 
-Several Warden X analysis layers wrap external programs (semgrep, gitleaks, yara, syft,
+Several Warden analysis layers wrap external programs (semgrep, gitleaks, yara, syft,
 grype, trivy). Those programs process attacker-controlled package contents, may be missing
 from a host, and may misbehave. This module gives every adapter one audited way to use them.
 

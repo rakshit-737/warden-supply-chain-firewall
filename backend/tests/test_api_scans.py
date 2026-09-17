@@ -113,7 +113,7 @@ def test_security_headers_present(client):
     assert resp.headers.get("X-Frame-Options") == "DENY"
 
 
-# =========================================================================== Warden X
+# =========================================================================== Warden
 def _warden_x_finding() -> dict:
     finding = Finding(
         Code.NETWORK_EGRESS, "high", 6.0, "outbound HTTP request to a raw IP address",
@@ -126,7 +126,7 @@ def _warden_x_finding() -> dict:
 
 
 class _WardenXOrchestrator:
-    """Emits a fully populated Warden X result (every new AnalysisResult field) or odd shapes."""
+    """Emits a fully populated Warden 2 result (every new AnalysisResult field) or odd shapes."""
 
     def analyze(self, ecosystem, name, version, options=None):
         if name.startswith("legacy-shape"):
@@ -155,7 +155,7 @@ class _WardenXOrchestrator:
 
 
 class _V1OnlyResult:
-    """An analysis result object that predates Warden X: only the v1 attributes exist."""
+    """An analysis result object that predates Warden 2: only the v1 attributes exist."""
 
     def __init__(self, ecosystem, name, version):
         self.ecosystem, self.name, self.version = ecosystem, name, version

@@ -11,7 +11,7 @@ export function BrandMark({ size = "md" }: { size?: "md" | "lg" }) {
       <span
         className={`font-condensed font-semibold leading-none text-ink ${size === "lg" ? "text-2xl" : "text-lg"}`}
       >
-        Warden X
+        Warden
       </span>
     </span>
   );

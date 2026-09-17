@@ -1,7 +1,7 @@
 import { USER_ROLES, type UserRole } from "../api/types";
 
 /**
- * UI mirror of the Warden X RBAC matrix (SPEC section 6; backend app/core/permissions.py).
+ * UI mirror of the Warden RBAC matrix (SPEC section 6; backend app/core/permissions.py).
  *
  * This module is a UI affordance ONLY: it decides which controls to show, hide or disable so
  * people are not offered actions that will be refused. The server enforces RBAC on every
@@ -60,7 +60,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, ReadonlySet<Permission>
   read_only: new Set(READ),
 };
 
-/** v1 role names accepted by the server and mapped to Warden X roles. */
+/** v1 role names accepted by the server and mapped to Warden roles. */
 export const LEGACY_ROLE_NAMES: Readonly<Record<string, UserRole>> = {
   analyst: "security_analyst",
   viewer: "read_only",
@@ -76,7 +76,7 @@ export const ROLE_LABELS: Readonly<Record<UserRole, string>> = {
 
 const EMPTY: ReadonlySet<Permission> = new Set();
 
-/** Canonical Warden X role for `role` (legacy names accepted), or null when unknown. */
+/** Canonical current role for `role` (legacy names accepted), or null when unknown. */
 export function normalizeRole(role: string | null | undefined): UserRole | null {
   if (typeof role !== "string") return null;
   const key = role.trim().toLowerCase();

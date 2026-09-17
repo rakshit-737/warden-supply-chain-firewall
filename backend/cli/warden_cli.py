@@ -132,7 +132,7 @@ API_COMMANDS = frozenset({"scan", "gate"})
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="warden", description="Warden X supply-chain security CLI")
+    p = argparse.ArgumentParser(prog="warden", description="Warden supply-chain security CLI")
     p.add_argument("--api", default=os.environ.get("WARDEN_API", "http://localhost:8000"),
                    help="Warden API base URL (default: $WARDEN_API)")
     p.add_argument("--token", default=os.environ.get("WARDEN_TOKEN", ""),

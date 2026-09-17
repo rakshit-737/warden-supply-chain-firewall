@@ -1,6 +1,6 @@
-"""Packaged analysis rules and the Warden X YARA rule loader.
+"""Packaged analysis rules and the Warden YARA rule loader.
 
-``app/analysis/rules/yara/*.yar`` holds the YARA rules shipped with Warden X, one namespace per
+``app/analysis/rules/yara/*.yar`` holds the YARA rules shipped with Warden, one namespace per
 file (the file stem). Every public rule carries a metadata schema (documented in
 ``rules/yara/README.md``):
 
@@ -21,7 +21,7 @@ failures, never ignored. Validation also rejects constructs Warden cannot honour
 directives (rules are compiled with includes disabled) and string count / offset / length
 references (``#a``, ``@a[i]``, ``!a[i]``), which are unreliable because Warden scans in YARA
 fast mode (only the first occurrence of each string is recorded, which bounds memory on
-hostile input). Packaged rules are also held to house style: author ``Warden X``,
+hostile input). Packaged rules are also held to house style: author ``Warden``,
 ``WX-YARA-NNN`` ids, an explicit ``scope``, no unknown metadata keys, no modules, and no private
 or global rules. Organisational rules may use modules, global/private rules and extra metadata,
 but must not claim the ``WX-YARA-`` id prefix.
@@ -53,7 +53,7 @@ PACKAGED_RULESET = "packaged"
 ORGANISATIONAL_RULESET = "organisational"
 RULESETS = (PACKAGED_RULESET, ORGANISATIONAL_RULESET)
 ORG_NAMESPACE_PREFIX = "org."
-PACKAGED_AUTHOR = "Warden X"
+PACKAGED_AUTHOR = "Warden"
 PACKAGED_ID_PREFIX = "WX-YARA-"
 
 REQUIRED_META = (

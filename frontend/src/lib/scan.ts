@@ -3,7 +3,7 @@ import { booleanOrNull, isRecord, textOrNull } from "./values";
 
 /**
  * Whether the machine-learning model ran for this scan: true or false when the scan records it, null
- * when it does not say (scans recorded before Warden X). The server stores ml_score = 0 when no model
+ * when it does not say (scans recorded before Warden 2). The server stores ml_score = 0 when no model
  * ran, so a score of 0 on its own cannot tell "assessed as low risk" from "not assessed".
  *
  * explanation.ml.available decides when present; otherwise a recorded model_version is used (the

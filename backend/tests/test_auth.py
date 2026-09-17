@@ -1,7 +1,7 @@
 """Authentication and user administration.
 
 The first five tests are the v1 behaviour (login, /me, RBAC denial, refresh rotation). The rest
-cover Warden X hardening: constant-work login, audited failed logins that never contain the
+cover Warden hardening: constant-work login, audited failed logins that never contain the
 password, refresh-token reuse detection, legacy role names on input, forged and invalid tokens,
 and the users API including the "never remove the last active admin" invariant (tested on an
 isolated database so the shared admin account is never at risk).
