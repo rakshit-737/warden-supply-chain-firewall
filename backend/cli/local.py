@@ -167,7 +167,13 @@ def cmd_project_scan(args: Any) -> int:
     threshold = _SEVERITY_ORDER[args.fail_on]
     blocking = [f for f in findings if f.severity.rank >= threshold]
 
-    if args.format == "json":
+    if args.format == "sarif":
+        from app import __version__
+        from app.reporting.sarif import build_sarif
+
+        log = build_sarif(findings, tool_version=__version__, automation_id=f"warden/project/{inventory.project_name}")
+        _write_or_print(json.dumps(log, indent=2), getattr(args, "output", None))
+    elif args.format == "json":
         print(json.dumps({
             "project": inventory.project_name,
             "manifests": inventory.manifests,

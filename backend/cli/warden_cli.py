@@ -155,7 +155,8 @@ def build_parser() -> argparse.ArgumentParser:
     ps = project.add_parser("scan", help="Dependency hygiene, dependency confusion and graph summary")
     ps.add_argument("path", nargs="?", default=".")
     ps.add_argument("--project-name")
-    ps.add_argument("--format", choices=["table", "json"], default="table")
+    ps.add_argument("--format", choices=["table", "json", "sarif"], default="table")
+    ps.add_argument("--output", "-o", help="write the report to a file (e.g. warden.sarif)")
     ps.add_argument("--fail-on", dest="fail_on", choices=["low", "medium", "high", "critical"], default="high",
                     help="minimum finding severity that fails the check (default: high)")
     ps.set_defaults(func=local.cmd_project_scan)
