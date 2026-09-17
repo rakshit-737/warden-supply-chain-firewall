@@ -19,7 +19,39 @@ security teams express policy as code. Fail closed: an incomplete analysis is ne
 **Non-goals.** Not a CVE scanner (it consumes advisories, it does not replace a scanner). Not a
 sandbox detonation platform: nothing analysed is ever executed. Not a registry mirror.
 
-## 3. Pipeline
+## 3. Platform overview
+
+```mermaid
+flowchart TB
+  subgraph Entry["Entry points"]
+    CLI["warden CLI<br/>scan · gate · project scan · sbom · diff · image scan · report · policy validate"]
+    GHA["GitHub Action"]
+    UI["Security console"]
+  end
+  subgraph API["API (FastAPI, RBAC on every route)"]
+    SCANS["/scans — package pipeline"]
+    PROJECTS["/projects — manifests, SBOM, graph, container config"]
+    DIFFS["/diffs — release comparison"]
+    CONTAINERS["/containers — image archives"]
+    MON["/monitoring — watched packages"]
+    INFO["/packages · /vulnerabilities · /events · /audit · /policies"]
+  end
+  WORKER["Monitoring worker<br/>(lease-based, heartbeat)"]
+  Entry --> API
+  DIFFS --> SCANS
+  MON --> DIFFS
+  WORKER --> DIFFS
+  API --> PG[("PostgreSQL")]
+  WORKER --> PG
+  API --> REDIS[("Redis")]
+  SCANS -.-> REG["PyPI"]
+  SCANS -.-> FEEDS["OSV · KEV · EPSS · NVD"]
+  CONTAINERS -.optional.-> TRIVY["Trivy"]
+```
+
+The local CLI commands and the GitHub Action run the same engines in-process, without the API.
+
+## 3a. Package pipeline
 
 ```mermaid
 flowchart TB
@@ -27,7 +59,7 @@ flowchart TB
   CACHE -- hit --> OUT
   CACHE -- miss --> ACQ["Acquisition<br/>registry metadata + artifact"]
   ACQ --> EXT["Safe extraction<br/>bounded, hostile-archive guards"]
-  EXT --> AZ["13 analyzers, in parallel<br/>per-analyzer timeout"]
+  EXT --> AZ["14 analyzers, in parallel<br/>per-analyzer timeout"]
   AZ --> COR["Correlation<br/>findings → attack chains"]
   COR --> RISK["Risk engine<br/>dimensions + floors + ML guardrail"]
   RISK --> POL["Policy engine<br/>confidence-gated rules, exceptions"]
