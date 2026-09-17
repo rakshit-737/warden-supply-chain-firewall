@@ -624,21 +624,48 @@ export type SbomFormat = "cyclonedx" | "spdx";
 // Packages (SPEC section 13)
 // ---------------------------------------------------------------------------------------------
 
-export interface PackageVersionSummary {
-  version: string;
+export interface PackageVerdict {
   scan_id: string;
+  version: string;
+  environment: string;
+  decision: Decision;
   risk_score: number;
   severity: Severity;
-  decision: Decision;
-  created_at: string;
+  scanned_at: string;
 }
 
+export interface PackageAdvisory {
+  id: string;
+  severity: string | null;
+  kev: boolean;
+  /** Versions of this package whose stored verdict lists the advisory. */
+  versions: string[];
+}
+
+/** GET /packages/{ecosystem}/{name} (backend api/routers/packages.py). Database only. */
 export interface PackageOverview {
   ecosystem: string;
   name: string;
-  versions: PackageVersionSummary[];
-  risk_history: { version: string; risk_score: number; created_at: string }[];
-  events: SecurityEvent[];
+  latest_verdict: (PackageVerdict & { package_intel: Record<string, unknown> | null; provenance: Record<string, unknown> | null }) | null;
+  verdicts: PackageVerdict[];
+  vulnerabilities: PackageAdvisory[];
+  monitoring: {
+    id: string;
+    enabled: boolean;
+    approved_version: string | null;
+    latest_seen_version: string | null;
+    last_checked_at: string | null;
+    consecutive_failures: number;
+    project_id: string | null;
+  }[];
+  release_diffs: {
+    id: string;
+    old_version: string;
+    new_version: string;
+    drift_detected: boolean;
+    drift_score: number;
+    created_at: string;
+  }[];
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -751,7 +778,6 @@ export interface Project {
   id: string;
   name: string;
   description: string | null;
-  created_by: string | null;
   created_at: string;
   updated_at: string | null;
 }
@@ -761,59 +787,51 @@ export interface ProjectCreate {
   description?: string | null;
 }
 
-export interface ProjectManifest {
-  file: string;
-  type: string;
-  sha256: string;
-}
-
-export interface ProjectScan {
+/** Row of GET /projects/{id}/scans. */
+export interface ProjectScanSummary {
   id: string;
   project_id: string;
-  requested_by: string | null;
   created_at: string;
-  manifests: ProjectManifest[];
   component_count: number;
   direct_count: number;
-  decision: Decision | null;
-  risk_score: number | null;
-  summary: Record<string, unknown>;
-  policy_reasons: PolicyDecisionReason[];
+  decision: string | null;
+  risk_score: number;
   environment: string | null;
 }
 
-export type ComponentResolution = "pinned" | "locked" | "resolved" | "unresolved";
+export interface ProjectScan extends ProjectScanSummary {
+  manifests: { file: string; type: string; sha256?: string }[] | null;
+  summary: {
+    findings?: Finding[];
+    graph_metrics?: Partial<GraphMetrics>;
+    warnings?: string[];
+    components_with_verdict?: number;
+  } | null;
+  policy_reasons: { code: string; severity: string; message: string }[] | null;
+}
 
 export interface ProjectComponent {
-  id: string;
-  project_scan_id: string;
   bom_ref: string;
   name: string;
   version: string | null;
   purl: string | null;
   direct: boolean;
   depth: number | null;
-  scope: string;
-  resolution: ComponentResolution;
-  hashes: Record<string, string[] | string>;
-  licenses: string[];
-  declared_at: { file: string; line: number | null }[];
-  introduced_by: string[];
+  scope: string | null;
+  resolution: string | null;
+  declared_at: { file: string; line: number | null }[] | null;
+  introduced_by: string[] | null;
   scan_id: string | null;
   risk_score: number | null;
-  decision: Decision | null;
+  decision: string | null;
   vulnerability_count: number;
 }
 
-/** Manifest files by name -> text content. Contents only; the server caps sizes. */
+/** Manifest files by relative path -> text content. Contents only; the server caps sizes. */
 export interface ProjectScanCreate {
   files: Record<string, string>;
   environment?: string;
 }
-
-// ---------------------------------------------------------------------------------------------
-// Monitoring, release diffs and containers (SPEC sections 5 and 13)
-// ---------------------------------------------------------------------------------------------
 
 export interface MonitoredPackage {
   id: string;
@@ -825,13 +843,11 @@ export interface MonitoredPackage {
   poll_interval_seconds: number;
   last_checked_at: string | null;
   next_check_at: string | null;
-  last_scan_id: string | null;
   last_risk_score: number | null;
-  snapshot: Record<string, unknown> | null;
+  snapshot: { version?: string; risk_score?: number; severity?: string; capabilities?: string[] } | null;
   project_id: string | null;
-  created_by: string | null;
-  created_at: string;
   consecutive_failures: number;
+  created_at: string;
 }
 
 export interface MonitoredPackageCreate {
@@ -842,33 +858,87 @@ export interface MonitoredPackageCreate {
   project_id?: string | null;
 }
 
-export interface MonitoringStatus {
+export interface MonitoredPackageUpdate {
   enabled?: boolean;
-  monitored_count?: number;
-  due_count?: number;
-  last_run_at?: string | null;
-  [key: string]: unknown;
+  approved_version?: string | null;
+  poll_interval_seconds?: number;
 }
 
-export interface ReleaseDiff {
+/** POST /monitoring/packages/{id}/check. status: baseline | unchanged | new_release | error. */
+export interface MonitoringCheckResult {
+  package: string;
+  status: string;
+  version: string | null;
+  diff_id: string | null;
+  detail: string | null;
+}
+
+/** A finding as listed in a release diff (backend analysis/diff.py). */
+export interface DiffFinding {
+  code: string;
+  severity: string;
+  file: string | null;
+  line: number | null;
+  message: string;
+  previous_severity?: string;
+}
+
+export interface ReleaseDiffSummary {
+  ecosystem: string;
+  name: string;
+  from_version: string;
+  to_version: string;
+  /** escalated | reduced | unchanged */
+  verdict: string;
+  reasons: string[];
+  risk: {
+    from: number;
+    to: number;
+    delta: number;
+    from_severity: string;
+    to_severity: string;
+    dimensions: Record<string, { from: number | null; to: number | null; delta: number | null }>;
+  };
+  capabilities: { added: string[]; removed: string[] };
+  files:
+    | { available: false; reason: string }
+    | {
+        available: true;
+        added: string[];
+        removed: string[];
+        changed: string[];
+        added_count: number;
+        removed_count: number;
+        changed_count: number;
+        new_executable_binaries: string[];
+        install_time_changes: string[];
+      };
+  maintainers: { available: boolean; added?: string[]; removed?: string[] };
+}
+
+export interface ReleaseDiffListItem {
   id: string;
   ecosystem: string;
   package: string;
   old_version: string;
   new_version: string;
+  analyzer_version: string;
   drift_detected: boolean;
   drift_score: number;
-  summary: Record<string, unknown>;
-  findings: Finding[];
-  created_by: string | null;
   created_at: string;
 }
 
+export interface ReleaseDiff extends ReleaseDiffListItem {
+  summary: ReleaseDiffSummary | null;
+  /** Findings that are new in the newer release. */
+  findings: DiffFinding[] | null;
+}
+
 export interface ReleaseDiffCreate {
-  ecosystem: "pypi";
+  ecosystem?: "pypi";
   name: string;
-  old_version: string;
-  new_version: string;
+  from_version: string;
+  to_version: string;
 }
 
 /** Availability of an analyzer's backing tool or data source (backend analyzers/base.py). */
@@ -879,32 +949,45 @@ export interface ToolStatus {
   detail: string | null;
 }
 
-/**
- * Expected values: queued, running, succeeded, failed. Typed as plain string so a status added by
- * a newer server does not break parsing.
- */
-export type ContainerScanStatus = string;
+/** Outcome of the optional Trivy pass; status: ok | unavailable | error | timeout | skipped. */
+export interface VulnerabilityScanStatus {
+  name: string;
+  status: string;
+  version: string | null;
+  detail: string | null;
+  vulnerabilities: number;
+  truncated: boolean;
+}
 
-export interface ContainerScan {
+export interface ContainerScanListItem {
   id: string;
   image_ref: string;
   image_digest: string | null;
-  requested_by: string | null;
   created_at: string;
-  status: ContainerScanStatus;
-  tools: ToolStatus[];
-  summary: Record<string, unknown>;
-  findings: Finding[];
-  sbom: Record<string, unknown> | null;
-  decision: Decision | null;
+  /** completed | incomplete */
+  status: string;
+  decision: string | null;
   risk_score: number | null;
 }
 
-/** Exactly one of image_ref / dockerfile / compose is expected by the server. */
-export type ContainerScanCreate =
-  | { image_ref: string; dockerfile?: never; compose?: never }
-  | { dockerfile: string; image_ref?: never; compose?: never }
-  | { compose: string; image_ref?: never; dockerfile?: never };
+export interface ContainerScan extends ContainerScanListItem {
+  tools: { trivy?: VulnerabilityScanStatus } | null;
+  summary: {
+    image_refs?: string[];
+    config_digest?: string | null;
+    architecture?: string | null;
+    os?: string | null;
+    user?: string | null;
+    exposed_ports?: string[];
+    layer_count?: number;
+    complete?: boolean;
+    component_counts?: Record<string, number>;
+    warnings?: string[];
+    reasons?: string[];
+    finding_counts?: Record<string, number>;
+  } | null;
+  findings: Finding[] | null;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Audit, system and ML (SPEC sections 5 and 13)
@@ -1029,7 +1112,23 @@ export interface ModelDrift {
   [key: string]: unknown;
 }
 
-export interface VulnerabilityQuery {
-  package: string;
-  version?: string;
+export interface VulnerabilityListItem {
+  id: string;
+  severity: string;
+  cvss_score: number | null;
+  kev: boolean;
+  epss_score: number | null;
+  fixed_versions: string[];
+  affected: { package: string; version: string }[];
+}
+
+export interface VulnerabilityList {
+  total: number;
+  items: VulnerabilityListItem[];
+}
+
+export interface VulnerabilityListQuery {
+  kev?: boolean;
+  min_severity?: "unknown" | "low" | "medium" | "high" | "critical";
+  limit?: number;
 }
