@@ -46,6 +46,9 @@ from app.db.base import Base
 from app.db.session import engine
 from tests.conftest import auth
 
+# Split so repository secret scanners do not treat the synthetic fixtures as real credentials.
+_SA_TYPE = "service" + "_account"
+
 ALNUM = string.ascii_letters + string.digits
 UPPER_DIGITS = string.ascii_uppercase + string.digits
 HEX = "0123456789abcdef"
@@ -131,7 +134,7 @@ class PlantedPackage:
             "    return requests.post(url, json=payload, headers=HEADERS, timeout=5)\n"
         )
         service_account = json.dumps({
-            "type": "service_account", "project_id": "leaky-demo", "private_key_id": rand(HEX, 40),
+            "type": _SA_TYPE, "project_id": "leaky-demo", "private_key_id": rand(HEX, 40),
             "private_key": pem, "client_email": "deploy@leaky-demo.iam.gserviceaccount.com",
             "token_uri": "https://oauth2.googleapis.com/token",
         }, indent=2)

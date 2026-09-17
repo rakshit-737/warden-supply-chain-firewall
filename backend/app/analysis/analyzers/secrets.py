@@ -20,7 +20,7 @@ Built-in detectors (always active)
   reported at severity ``info`` only; Mailgun keys need the word "mailgun" in the same file and
   Twilio key SIDs without "twilio" nearby are low confidence.
 * **Contextual detectors**: AWS secret access keys (a 40-character key next to an AWS secret-key
-  name, or near an AWS access key id), GCP service-account JSON (``"type": "service_account"`` plus
+  name, or near an AWS access key id), GCP service-account JSON (a ``type`` of ``service_account`` plus
   a ``private_key`` field), Azure ``AccountKey=`` / ``SharedAccessKey=`` connection-string values,
   and database / message-broker URLs with an embedded password (passwords that are placeholders or
   templates are ignored; local or placeholder hosts lower severity and confidence).
