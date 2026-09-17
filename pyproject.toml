@@ -74,7 +74,13 @@ server = [
   "joblib>=1.4",
   "numpy>=2.2",
   "python-multipart>=0.0.20",
+  "packaging>=24.2",
+  "PyYAML>=6.0",
+  "networkx>=3.4",
+  "prometheus-client>=0.21",
 ]
+# Optional YARA layer (bundles libyara); see backend/requirements-optional.txt.
+yara = ["yara-python>=4.5"]
 
 [project.urls]
 Homepage = "https://github.com/rakshit-737/warden-supply-chain-security"
@@ -95,3 +101,4 @@ include = ["app*", "cli*", "ml*"]
 
 [tool.setuptools.package-data]
 "app.analysis.data" = ["*.json", "*.txt"]
+"app.analysis.rules" = ["yara/*.yar", "semgrep/*.yml"]
