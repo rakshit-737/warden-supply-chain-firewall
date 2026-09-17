@@ -7,6 +7,8 @@
 [![Release](https://img.shields.io/github/v/release/rakshit-737/warden-supply-chain-security)](https://github.com/rakshit-737/warden-supply-chain-security/releases)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![CI](https://github.com/rakshit-737/warden-supply-chain-security/actions/workflows/ci.yml/badge.svg)](https://github.com/rakshit-737/warden-supply-chain-security/actions/workflows/ci.yml)
+[![Security](https://github.com/rakshit-737/warden-supply-chain-security/actions/workflows/security.yml/badge.svg)](https://github.com/rakshit-737/warden-supply-chain-security/actions/workflows/security.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rakshit-737/warden-supply-chain-security/badge)](https://scorecard.dev/viewer/?uri=github.com/rakshit-737/warden-supply-chain-security)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
 [Architecture](docs/ARCHITECTURE.md) ·
