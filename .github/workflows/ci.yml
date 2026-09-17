@@ -340,6 +340,11 @@ jobs:
           cache-from: type=gha,scope=warden-frontend
           cache-to: type=gha,mode=max,scope=warden-frontend
 
+      - name: Validate the frontend nginx configuration
+        # `api` does not exist here; the upstream uses runtime re-resolution (`resolve`), so a
+        # placeholder host entry is enough for the syntax and semantics check.
+        run: docker run --rm --add-host api:127.0.0.1 --entrypoint nginx warden-frontend:ci -t
+
       - name: Install Trivy (pinned release, sha256-verified)
         run: |
           set -euo pipefail
