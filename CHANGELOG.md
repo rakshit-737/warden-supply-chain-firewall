@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Projects
+- npm manifests: `package.json`, `package-lock.json` (lockfile v1–v3) and `npm-shrinkwrap.json`
+  become SBOM components (`pkg:npm` purls, sha512 integrity hashes, dev/optional scopes) with
+  dependency edges that follow Node's nested `node_modules` resolution. Unpinned direct npm
+  dependencies without a lock file are hygiene findings. Package analysis stays PyPI-only.
+
 ## 2.0.0
 
 Warden grows from a package firewall into a supply-chain security platform. Package code is still

@@ -164,11 +164,13 @@ intelligence warns instead of silently allowing.
 
 ## 5. Supporting engines
 
-**SBOM** (`app/sbom`) parses requirements files, `pyproject.toml`, `poetry.lock` and `Pipfile.lock`
-with exact line provenance and emits CycloneDX 1.6 or SPDX 2.3, validated against the official
+**SBOM** (`app/sbom`) parses requirements files, `pyproject.toml`, `poetry.lock` and `Pipfile.lock`,
+and npm `package.json`, `package-lock.json` and `npm-shrinkwrap.json` (`app/sbom/npm.py`: versions,
+integrity hashes, dev/optional scopes and Node's nested resolution), with exact line provenance and emits CycloneDX 1.6 or SPDX 2.3, validated against the official
 schemas in tests. **Graph** (`app/graph`) turns an inventory into a dependency graph with depth,
 blast radius, dominators and centrality. Both back the project API and the `warden project scan` /
-`sbom generate` commands.
+`sbom generate` commands. npm components appear in SBOMs, the graph and pinning checks; package
+analysis, verdicts and dependency-confusion checks remain PyPI-only.
 
 **Release diffs** (`app/analysis/diff.py`) compare two analysed releases: risk and dimensions,
 capabilities, findings by code and file, the file inventory and declared maintainers.

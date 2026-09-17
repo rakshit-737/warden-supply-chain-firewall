@@ -199,7 +199,8 @@ and an ML over-escalation.
 
 - **Package scanning** end to end: acquisition, safe extraction, 13 analyzers, correlation, risk,
   policy, persistence, events and audit.
-- **Project scanning**: manifests (requirements, `pyproject.toml`, lock files) parsed with line
+- **Project scanning**: manifests (requirements, `pyproject.toml`, Python lock files, npm `package.json` and
+  `package-lock.json`) parsed with line
   provenance, dependency hygiene and dependency-confusion checks, Dockerfile and Compose linting, a
   dependency graph with blast radius, CycloneDX 1.6 and SPDX 2.3 SBOMs — through the API, the console
   and the CLI.
