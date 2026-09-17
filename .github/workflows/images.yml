@@ -1,0 +1,103 @@
+# Publishes the API and web images to GitHub Container Registry for release tags.
+#
+#   ghcr.io/rakshit-737/warden-api:<version>   and :latest
+#   ghcr.io/rakshit-737/warden-web:<version>   and :latest
+#
+# Each image is signed keylessly with cosign (Sigstore, GitHub OIDC identity) and gets a build
+# provenance attestation stored in the registry. Verify with:
+#   cosign verify ghcr.io/rakshit-737/warden-api:<version> \
+#     --certificate-identity-regexp '^https://github.com/rakshit-737/warden-supply-chain-security/' \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+#   gh attestation verify oci://ghcr.io/rakshit-737/warden-api:<version> --repo rakshit-737/warden-supply-chain-security
+#
+# The images are the same ones ci.yml builds and Trivy-gates on every push. Actions are pinned to
+# commit SHAs (see ci.yml). Release tags can only be created by repository admins (tag ruleset).
+
+name: Publish images
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  images:
+    name: Build, sign and push (${{ matrix.image }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write        # push to ghcr.io
+      id-token: write        # keyless signing and attestations
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: warden-api
+            context: backend
+          - image: warden-web
+            context: frontend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Derive the version
+        id: meta
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          IMAGE: ${{ matrix.image }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          version="${REF_NAME#v}"
+          if ! printf '%s' "${version}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Tag ${REF_NAME} is not vMAJOR.MINOR.PATCH"; exit 1
+          fi
+          repo="ghcr.io/$(printf '%s' "${OWNER}" | tr '[:upper:]' '[:lower:]')/${IMAGE}"
+          {
+            echo "repo=${repo}"
+            echo "tags=${repo}:${version},${repo}:latest"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4.4.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.context }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          provenance: false
+          sbom: true
+          labels: |
+            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign the image (keyless)
+        env:
+          IMAGE_REF: ${{ steps.meta.outputs.repo }}@${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "${IMAGE_REF}"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.meta.outputs.repo }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
