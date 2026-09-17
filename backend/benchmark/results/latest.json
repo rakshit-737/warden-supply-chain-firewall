@@ -1,0 +1,424 @@
+{
+  "benchmark_version": "1.0.0",
+  "samples": 22,
+  "malicious": 14,
+  "benign": 8,
+  "detection_rate": 0.929,
+  "evasive_detection_rate": 1.0,
+  "false_positive_rate": 0.125,
+  "missed": [
+    "mal-ssh-key-theft"
+  ],
+  "false_positives": [
+    "ben-native-build"
+  ],
+  "by_technique": {
+    "benign:compiler_invocation": {
+      "samples": 1,
+      "correct": 0
+    },
+    "benign:console_script": {
+      "samples": 1,
+      "correct": 1
+    },
+    "benign:editable_install_pth": {
+      "samples": 1,
+      "correct": 1
+    },
+    "benign:embedded_assets": {
+      "samples": 1,
+      "correct": 1
+    },
+    "benign:environment_config": {
+      "samples": 1,
+      "correct": 1
+    },
+    "benign:http_client_library": {
+      "samples": 1,
+      "correct": 1
+    },
+    "benign:plain_library": {
+      "samples": 1,
+      "correct": 1
+    },
+    "benign:test_fixture_subprocess": {
+      "samples": 1,
+      "correct": 1
+    },
+    "malicious:build_backend_hook": {
+      "samples": 1,
+      "correct": 1
+    },
+    "malicious:credential_file_access": {
+      "samples": 1,
+      "correct": 0
+    },
+    "malicious:credential_harvest_exfil": {
+      "samples": 2,
+      "correct": 2
+    },
+    "malicious:download_and_execute": {
+      "samples": 1,
+      "correct": 1
+    },
+    "malicious:entrypoint_shadowing": {
+      "samples": 1,
+      "correct": 1
+    },
+    "malicious:install_time_encoded_exec": {
+      "samples": 3,
+      "correct": 3
+    },
+    "malicious:install_time_network": {
+      "samples": 2,
+      "correct": 2
+    },
+    "malicious:pth_startup_hook": {
+      "samples": 1,
+      "correct": 1
+    },
+    "malicious:reverse_shell": {
+      "samples": 1,
+      "correct": 1
+    },
+    "malicious:typosquatting": {
+      "samples": 1,
+      "correct": 1
+    }
+  },
+  "results": [
+    {
+      "id": "mal-install-network",
+      "label": "malicious",
+      "technique": "install_time_network",
+      "evasive": false,
+      "decision": "block",
+      "risk_score": 61,
+      "severity": "high",
+      "codes": [
+        "INSTALL_HOOK_EXEC",
+        "NETWORK_EGRESS"
+      ],
+      "duration_ms": 7469,
+      "correct": true
+    },
+    {
+      "id": "mal-install-encoded-exec",
+      "label": "malicious",
+      "technique": "install_time_encoded_exec",
+      "evasive": false,
+      "decision": "block",
+      "risk_score": 100,
+      "severity": "critical",
+      "codes": [
+        "ATTACK_CHAIN",
+        "DYNAMIC_EXEC",
+        "ENCODED_EXEC",
+        "INSTALL_HOOK_EXEC",
+        "OBFUSCATION",
+        "YARA_MATCH"
+      ],
+      "duration_ms": 389,
+      "correct": true
+    },
+    {
+      "id": "mal-env-exfil",
+      "label": "malicious",
+      "technique": "credential_harvest_exfil",
+      "evasive": false,
+      "decision": "warn",
+      "risk_score": 47,
+      "severity": "medium",
+      "codes": [
+        "ENV_HARVEST",
+        "NETWORK_EGRESS"
+      ],
+      "duration_ms": 280,
+      "correct": true
+    },
+    {
+      "id": "mal-ssh-key-theft",
+      "label": "malicious",
+      "technique": "credential_file_access",
+      "evasive": false,
+      "decision": "allow",
+      "risk_score": 33,
+      "severity": "low",
+      "codes": [
+        "DANGEROUS_IMPORT",
+        "FS_SENSITIVE",
+        "NETWORK_EGRESS"
+      ],
+      "duration_ms": 329,
+      "correct": false
+    },
+    {
+      "id": "mal-pth-hook",
+      "label": "malicious",
+      "technique": "pth_startup_hook",
+      "evasive": false,
+      "decision": "block",
+      "risk_score": 100,
+      "severity": "critical",
+      "codes": [
+        "PTH_STARTUP_HOOK",
+        "YARA_MATCH"
+      ],
+      "duration_ms": 265,
+      "correct": true
+    },
+    {
+      "id": "mal-in-tree-backend",
+      "label": "malicious",
+      "technique": "build_backend_hook",
+      "evasive": false,
+      "decision": "block",
+      "risk_score": 85,
+      "severity": "critical",
+      "codes": [
+        "BUILD_BACKEND_HOOK",
+        "DANGEROUS_IMPORT",
+        "SUBPROCESS_EXEC",
+        "YARA_MATCH"
+      ],
+      "duration_ms": 531,
+      "correct": true
+    },
+    {
+      "id": "mal-shadow-pip",
+      "label": "malicious",
+      "technique": "entrypoint_shadowing",
+      "evasive": false,
+      "decision": "block",
+      "risk_score": 40,
+      "severity": "medium",
+      "codes": [
+        "DANGEROUS_IMPORT",
+        "ENTRYPOINT_SHADOWING",
+        "SUBPROCESS_EXEC"
+      ],
+      "duration_ms": 327,
+      "correct": true
+    },
+    {
+      "id": "mal-reverse-shell",
+      "label": "malicious",
+      "technique": "reverse_shell",
+      "evasive": false,
+      "decision": "block",
+      "risk_score": 80,
+      "severity": "critical",
+      "codes": [
+        "DANGEROUS_IMPORT",
+        "NETWORK_EGRESS",
+        "SUBPROCESS_EXEC",
+        "YARA_MATCH"
+      ],
+      "duration_ms": 297,
+      "correct": true
+    },
+    {
+      "id": "mal-download-execute",
+      "label": "malicious",
+      "technique": "download_and_execute",
+      "evasive": false,
+      "decision": "block",
+      "risk_score": 100,
+      "severity": "critical",
+      "codes": [
+        "ATTACK_CHAIN",
+        "INSTALL_HOOK_EXEC",
+        "NETWORK_EGRESS",
+        "SUBPROCESS_EXEC"
+      ],
+      "duration_ms": 343,
+      "correct": true
+    },
+    {
+      "id": "mal-typosquat",
+      "label": "malicious",
+      "technique": "typosquatting",
+      "evasive": false,
+      "decision": "warn",
+      "risk_score": 47,
+      "severity": "medium",
+      "codes": [
+        "NETWORK_EGRESS",
+        "TYPOSQUAT"
+      ],
+      "duration_ms": 264,
+      "correct": true
+    },
+    {
+      "id": "eva-string-reconstruction",
+      "label": "malicious",
+      "technique": "install_time_encoded_exec",
+      "evasive": true,
+      "decision": "block",
+      "risk_score": 99,
+      "severity": "critical",
+      "codes": [
+        "ATTACK_CHAIN",
+        "DYNAMIC_EXEC",
+        "OBFUSCATION"
+      ],
+      "duration_ms": 594,
+      "correct": true
+    },
+    {
+      "id": "eva-dynamic-import",
+      "label": "malicious",
+      "technique": "install_time_network",
+      "evasive": true,
+      "decision": "block",
+      "risk_score": 54,
+      "severity": "medium",
+      "codes": [
+        "INSTALL_HOOK_EXEC"
+      ],
+      "duration_ms": 280,
+      "correct": true
+    },
+    {
+      "id": "eva-hex-payload",
+      "label": "malicious",
+      "technique": "install_time_encoded_exec",
+      "evasive": true,
+      "decision": "block",
+      "risk_score": 100,
+      "severity": "critical",
+      "codes": [
+        "DYNAMIC_EXEC",
+        "INSTALL_HOOK_EXEC",
+        "YARA_MATCH"
+      ],
+      "duration_ms": 329,
+      "correct": true
+    },
+    {
+      "id": "eva-nested-module",
+      "label": "malicious",
+      "technique": "credential_harvest_exfil",
+      "evasive": true,
+      "decision": "warn",
+      "risk_score": 47,
+      "severity": "medium",
+      "codes": [
+        "ENV_HARVEST",
+        "NETWORK_EGRESS"
+      ],
+      "duration_ms": 295,
+      "correct": true
+    },
+    {
+      "id": "ben-plain-library",
+      "label": "benign",
+      "technique": "plain_library",
+      "evasive": false,
+      "decision": "allow",
+      "risk_score": 0,
+      "severity": "info",
+      "codes": [],
+      "duration_ms": 282,
+      "correct": true
+    },
+    {
+      "id": "ben-native-build",
+      "label": "benign",
+      "technique": "compiler_invocation",
+      "evasive": false,
+      "decision": "warn",
+      "risk_score": 40,
+      "severity": "medium",
+      "codes": [
+        "DANGEROUS_IMPORT",
+        "INSTALL_HOOK_EXEC",
+        "SUBPROCESS_EXEC"
+      ],
+      "duration_ms": 280,
+      "correct": false
+    },
+    {
+      "id": "ben-editable-pth",
+      "label": "benign",
+      "technique": "editable_install_pth",
+      "evasive": false,
+      "decision": "allow",
+      "risk_score": 18,
+      "severity": "low",
+      "codes": [
+        "PTH_STARTUP_HOOK"
+      ],
+      "duration_ms": 328,
+      "correct": true
+    },
+    {
+      "id": "ben-http-client",
+      "label": "benign",
+      "technique": "http_client_library",
+      "evasive": false,
+      "decision": "allow",
+      "risk_score": 6,
+      "severity": "info",
+      "codes": [
+        "NETWORK_EGRESS"
+      ],
+      "duration_ms": 343,
+      "correct": true
+    },
+    {
+      "id": "ben-base64-assets",
+      "label": "benign",
+      "technique": "embedded_assets",
+      "evasive": false,
+      "decision": "allow",
+      "risk_score": 20,
+      "severity": "low",
+      "codes": [
+        "OBFUSCATION"
+      ],
+      "duration_ms": 297,
+      "correct": true
+    },
+    {
+      "id": "ben-cli-tool",
+      "label": "benign",
+      "technique": "console_script",
+      "evasive": false,
+      "decision": "allow",
+      "risk_score": 0,
+      "severity": "info",
+      "codes": [],
+      "duration_ms": 360,
+      "correct": true
+    },
+    {
+      "id": "ben-config-from-env",
+      "label": "benign",
+      "technique": "environment_config",
+      "evasive": false,
+      "decision": "allow",
+      "risk_score": 0,
+      "severity": "info",
+      "codes": [],
+      "duration_ms": 296,
+      "correct": true
+    },
+    {
+      "id": "ben-test-fixtures",
+      "label": "benign",
+      "technique": "test_fixture_subprocess",
+      "evasive": false,
+      "decision": "allow",
+      "risk_score": 17,
+      "severity": "low",
+      "codes": [
+        "DANGEROUS_IMPORT",
+        "SUBPROCESS_EXEC"
+      ],
+      "duration_ms": 328,
+      "correct": true
+    }
+  ],
+  "disclaimer": "Synthetic, hand-written corpus; results describe these samples only."
+}
