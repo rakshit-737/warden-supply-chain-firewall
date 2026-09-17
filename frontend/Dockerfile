@@ -2,12 +2,11 @@
 #
 # Warden X dashboard image: Vite production build served by unprivileged nginx on port 8080.
 #
-# Base images are pinned by multi-arch index digest (tag kept for readability), resolved from
-# registry-1.docker.io on 2026-09-15 (see deploy/README.md):
-# * node:24-alpine3.24 - Node 24 LTS; its image config reports NODE_VERSION=24.21.0. The
-#   24.21.0-alpine3.24 tag pointed at a different index digest on that date, so the pin keeps the
-#   tag that was verified to match this digest.
-# * nginxinc/nginx-unprivileged:1.30.4-alpine3.24 - the same index as stable-alpine on that date.
+# Base images are pinned by multi-arch index digest (tag kept for readability); Dependabot moves the
+# tag and the digest together (see deploy/README.md):
+# * node:26-alpine3.24 - build stage only; nothing from it reaches the runtime image.
+# * nginxinc/nginx-unprivileged:1.30.x-alpine3.24 - the nginx stable line. Odd minor versions are
+#   nginx mainline and are held for manual review in .github/dependabot.yml.
 
 # ---- Stage 1: build the static bundle --------------------------------------------------------
 FROM node:26-alpine3.24@sha256:ef24c5053d50fdc3e4e56eb4e7ddb7861874ab0fdc797046ba897581deb8e868 AS builder
@@ -16,8 +15,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 # `npm ci` installs exactly the versions and integrity hashes recorded in package-lock.json and fails
 # if package.json and the lockfile disagree. --ignore-scripts stops dependency lifecycle scripts from
-# running during the build; in the current lockfile only esbuild (binary check/optimisation) and
-# fsevents (macOS only) declare install scripts, and neither is needed for `vite build` on Linux.
+# running during the build; in the current lockfile only fsevents (macOS only) declares an install
+# script, and it is not needed for `vite build` on Linux.
 RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY . .
 RUN npm run build
@@ -29,8 +28,8 @@ LABEL org.opencontainers.image.title="warden-x-web" \
       org.opencontainers.image.description="Warden X security dashboard (static SPA and API reverse proxy)" \
       org.opencontainers.image.source="https://github.com/rakshit-737/warden-supply-chain-security" \
       org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.base.name="docker.io/nginxinc/nginx-unprivileged:1.30.4-alpine3.24" \
-      org.opencontainers.image.base.digest="sha256:adf5042a17f4ecdd200c595fa9ffd1be37efb18f89a830bd1a00e4ab4d59d42c"
+      org.opencontainers.image.base.name="docker.io/nginxinc/nginx-unprivileged:1.30.5-alpine3.24" \
+      org.opencontainers.image.base.digest="sha256:daa17b944bac2b578e962da4c61ad72a59233b3c63abea17113acaf4e6b9aea4"
 
 # Root only for the filesystem lock-down below; the final USER is the image's unprivileged nginx (101).
 USER root
