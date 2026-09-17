@@ -399,3 +399,9 @@ def test_module_exports_are_stable() -> None:
     for name in ("redact_text", "find_secrets", "redact_value", "fingerprint", "sanitize_text", "sanitize_evidence",
                  "terminal_safe", "html_escape", "markdown_escape", "structlog_redactor"):
         assert callable(getattr(redaction, name))
+
+
+def test_escaped_bidi_prefix_does_not_hide_a_following_token() -> None:
+    token = "gh" + "p_" + "A" * 36
+    out = redaction.sanitize_text("pkg\u202e" + token)
+    assert token not in out and "\u202e" not in out
