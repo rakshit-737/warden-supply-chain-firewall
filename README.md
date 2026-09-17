@@ -1,6 +1,6 @@
 <div align="center">
 
-# Warden X — Software Supply-Chain Security Platform
+# Warden, A Software Supply-Chain Security Platform
 
 **Decide whether a dependency is safe to install — from what its code does, where it came from, and what is known about it.**
 
