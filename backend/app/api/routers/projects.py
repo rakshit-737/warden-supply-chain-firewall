@@ -2,7 +2,8 @@
 
 A project scan takes manifest files in the request body (``{path: text}``, bounded by
 :mod:`app.schemas.project`). Nothing is fetched and nothing is executed: the manifests are parsed
-with the same engine the ``warden project scan`` CLI uses.
+with the same engine the ``warden project scan`` CLI uses, and Dockerfiles / Compose files among
+the submitted files are linted (:mod:`app.containers.dockerfile`).
 
 Components are enriched with the most recent stored package verdict for the same name and version
 in the scan's environment (``scans`` table), when one exists; components without a verdict keep
@@ -28,6 +29,7 @@ from sqlalchemy.orm import Session
 from app import __version__
 from app.analysis.depconf.project import project_confusion_findings
 from app.api.deps import require_permission
+from app.containers.dockerfile import lint_files as lint_container_files
 from app.core.errors import NotFoundError, WardenError
 from app.core.permissions import Permission
 from app.db.models import (
@@ -143,11 +145,12 @@ def scan_project(
     project = _project(db, project_id)
     environment = payload.environment or DEFAULT_ENVIRONMENT
     inventory = parse_project(payload.files, project.name)
-    if not inventory.manifests:
+    container_findings = lint_container_files(payload.files)
+    if not inventory.manifests and not container_findings:
         raise WardenError("No supported manifest found in the submitted files", code="validation_error",
                           status_code=422)
 
-    findings = [*hygiene_findings(inventory), *project_confusion_findings(inventory)]
+    findings = [*hygiene_findings(inventory), *project_confusion_findings(inventory), *container_findings]
     verdicts = _stored_verdicts(db, inventory, environment)
     risk_by_ref = {ref: s.risk_score for ref, s in verdicts.items()}
     decision_by_ref = {ref: s.decision.value for ref, s in verdicts.items() if s.decision}

