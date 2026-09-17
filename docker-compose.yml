@@ -345,8 +345,8 @@ services:
   monitor:
     <<: [*hardening, *api-image]
     profiles: ["worker"]
-    # Continuous-monitoring worker. The app.workers.monitor module is being implemented by the backend
-    # team; this service is ready for it but has not been run.
+    # Continuous-monitoring worker (backend/app/workers/monitor.py). Unit-tested; this Compose service
+    # itself has not been run in CI.
     command: ["python", "-m", "app.workers.monitor"]
     environment:
       <<: *api-environment
@@ -364,8 +364,8 @@ services:
       - data           # db, cache
       - worker_egress  # outbound to PyPI / OSV / CISA KEV / FIRST EPSS
     healthcheck:
-      # Heartbeat contract requested from the backend team: the worker touches this file at least every
-      # 5 minutes, idle or not. Until that exists this probe reports "unhealthy"; it never fakes health.
+      # Heartbeat contract: the worker touches this file after every cycle and at least once a minute
+      # while idle. A stale file (older than 10 minutes) reports "unhealthy"; the probe never fakes health.
       test: ["CMD", "python", "-c", "import os,sys,time; p='/tmp/warden-monitor.heartbeat'; sys.exit(0 if os.path.exists(p) and time.time() - os.path.getmtime(p) < 600 else 1)"]
       interval: 60s
       timeout: 5s
