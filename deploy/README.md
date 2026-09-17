@@ -10,7 +10,8 @@ and the continuous-monitoring worker (`worker`).
 > `promtool check config` and `promtool check rules` (every dashboard query), and YAML/JSON parsing.
 > `frontend/nginx.conf` was tested with nginx 1.30.4: `nginx -t` and response tests. Those tests
 > included runtime re-resolution of `api` against a stand-in DNS server: a start while `api` does not
-> resolve, and an api that moves to a new address. The images and the stack have **not** been
+> resolve, and an api that moves to a new address. Later changes (the image-upload and long-running
+> routes) are covered by `nginx -t` inside the built web image in CI, not by the response tests. The images and the stack have **not** been
 > built or run, so treat the first `docker compose up --build` as a test run.
 
 ## Quick start
@@ -133,8 +134,8 @@ own probes are deliberately not reachable through `web`.
   discovered. **Packages scanned** and **Blocked packages** then show "no data" instead of 0.
 - The image is `grafana/grafana`, which is the OSS edition. `grafana/grafana-oss` is no longer updated
   (Grafana's Docker installation docs).
-- The worker's gauges (`queue_depth`, `monitored_packages`) are not scraped until the worker exposes
-  metrics.
+- `monitored_packages` is computed by the API from the database on every scrape. `queue_depth` has
+  no producer yet, and the worker itself exposes no metrics endpoint.
 
 ## Upgrading
 
