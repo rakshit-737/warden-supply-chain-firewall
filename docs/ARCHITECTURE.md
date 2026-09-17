@@ -63,9 +63,10 @@ kept.
 
 ### 3.3 Analyzers (`app/analysis/analyzers`)
 
-Thirteen analyzers run concurrently, each with its own timeout, each returning `Finding` objects:
-metadata, typosquat, static code, install script, obfuscation, IOC, inventory, secrets, dependency
-confusion, provenance, YARA, Semgrep, vulnerability. They never execute package code and never
+Fourteen analyzers run concurrently, each with its own timeout, each returning `Finding` objects:
+metadata, typosquat, static code, install script, install vectors (`.pth` start-up hooks, in-tree
+build backends, console scripts shadowing common commands), obfuscation, IOC, inventory, secrets,
+dependency confusion, provenance, YARA, Semgrep, vulnerability. They never execute package code and never
 perform I/O beyond their declared needs; the two intelligence-backed ones are skipped in offline
 scans. An analyzer that crashes or times out produces `ANALYZER_ERROR`, which raises risk rather than
 silently shrinking the evidence, and the result is not cached.
@@ -122,21 +123,40 @@ intelligence warns instead of silently allowing.
 - **Observability**: Prometheus metrics with bounded labels, structured JSON logs that redact
   secrets, optional OpenTelemetry spans.
 - **Console** (`frontend/`): React and TypeScript. Dashboard, scans and scan detail, new scan,
-  policies, events, audit with chain verification, exceptions workflow, users, system.
+  packages, projects (manifest scans, components, dependency graph, SBOM export), release diffs,
+  containers, monitoring, policies, events, audit with chain verification, exceptions workflow,
+  users, system.
+- **Monitoring worker** (`app/workers/monitor.py`): claims due watched packages with a lease, checks
+  them for new releases, stores release diffs and publishes events; it touches a heartbeat file the
+  Compose healthcheck reads.
 
 ## 5. Supporting engines
 
 **SBOM** (`app/sbom`) parses requirements files, `pyproject.toml`, `poetry.lock` and `Pipfile.lock`
 with exact line provenance and emits CycloneDX 1.6 or SPDX 2.3, validated against the official
 schemas in tests. **Graph** (`app/graph`) turns an inventory into a dependency graph with depth,
-blast radius, dominators and centrality. Both are libraries today; the project-scanning API that will
-expose them is the next phase.
+blast radius, dominators and centrality. Both back the project API and the `warden project scan` /
+`sbom generate` commands.
+
+**Release diffs** (`app/analysis/diff.py`) compare two analysed releases: risk and dimensions,
+capabilities, findings by code and file, the file inventory and declared maintainers.
+
+**Containers** (`app/containers`) lint Dockerfiles and Compose files, analyse `docker save` / OCI
+image archives in memory with the same safe-extraction guards as packages (layer whiteouts
+applied), and optionally run Trivy for known vulnerabilities, reporting "not assessed" when it is
+missing.
+
+**Reporting** (`app/reporting`) renders findings as SARIF 2.1.0 (validated against the official
+schema) and saved results as escaped Markdown or self-contained HTML.
+
+**Benchmark** (`backend/benchmark`) runs a small synthetic, inert corpus through the real pipeline;
+see [BENCHMARK.md](BENCHMARK.md).
 
 ## 6. Trade-offs
 
 | Decision | Why | Cost |
 |---|---|---|
-| Static analysis only | Deterministic, fast, and safe: the classic payload runs at install time, and "just run it to see" is what the attacker wants | Misses runtime-only behaviour; a sandbox is designed but not built |
+| Static analysis only | Deterministic, fast, and safe: the classic payload runs at install time, and "just run it to see" is what the attacker wants | Misses runtime-only behaviour; a sandbox is designed ([SANDBOX.md](SANDBOX.md)) but not built |
 | Separate severity and confidence | Lets policy demand strong evidence before blocking, instead of one blurred number | More to reason about per finding |
 | Separate behavioural and vulnerability risk | "Malicious" and "vulnerable" are different questions with different responses | Two numbers to explain |
 | Bounded ML influence | Measured false positives on real packages | The model contributes less than its synthetic metrics suggest |
@@ -145,6 +165,7 @@ expose them is the next phase.
 
 ## 7. What is not built yet
 
-Project-scanning and package-intelligence APIs, release-to-release behavioural diffing, SARIF output,
-container image scanning, the continuous monitoring worker, the opt-in dynamic sandbox, CLI commands
-beyond `scan` and `gate`, and ecosystems other than PyPI.
+The opt-in dynamic sandbox (design only, see [SANDBOX.md](SANDBOX.md)); transitive dependencies for
+project scans beyond what lock files record (a PyPI-backed resolver exists in `app/sbom/resolver.py`
+but is not wired into the API or CLI); ecosystems other than PyPI; and a Marketplace release of the
+GitHub Action (it is usable from the repository today).
