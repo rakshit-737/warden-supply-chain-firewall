@@ -100,7 +100,7 @@ function DrawerPanel({ title, description, onClose, children, footer, fallbackFo
               id={titleId}
               ref={headingRef}
               tabIndex={-1}
-              className="break-words font-condensed text-xl font-semibold leading-tight text-ink focus:outline-none"
+              className="wrap-break-word font-condensed text-xl font-semibold leading-tight text-ink focus:outline-hidden"
             >
               {title}
             </h2>

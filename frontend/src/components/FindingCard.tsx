@@ -15,7 +15,7 @@ export interface FindingCardProps {
 }
 
 function MappingChip({ id, href }: { id: string; href: string | null }) {
-  const chip = "inline-flex rounded border border-line px-1.5 py-0.5 font-mono text-2xs";
+  const chip = "inline-flex rounded-sm border border-line px-1.5 py-0.5 font-mono text-2xs";
   return href ? (
     <ExternalLink href={href} plain className={`${chip} text-ink-secondary hover:border-accent hover:text-ink`}>
       {id}
@@ -60,7 +60,7 @@ export function FindingCard({ finding, defaultExpanded = false }: FindingCardPro
       <div className="flex flex-col gap-2 px-4 py-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <SeverityBadge value={finding.severity} />
-          <code className="break-all rounded bg-raised px-1.5 py-0.5 font-mono text-2xs text-ink">{finding.code}</code>
+          <code className="break-all rounded-sm bg-raised px-1.5 py-0.5 font-mono text-2xs text-ink">{finding.code}</code>
           {textOrNull(finding.category) && (
             <span className="text-xs text-ink-secondary">{humanize(finding.category ?? "")}</span>
           )}
@@ -69,11 +69,11 @@ export function FindingCard({ finding, defaultExpanded = false }: FindingCardPro
           </span>
         </div>
 
-        <h3 id={titleId} className="break-words font-semibold text-ink">
+        <h3 id={titleId} className="wrap-break-word font-semibold text-ink">
           {title}
         </h3>
         {explicitTitle && message && message !== explicitTitle && (
-          <p className="break-words text-ink-secondary">{message}</p>
+          <p className="wrap-break-word text-ink-secondary">{message}</p>
         )}
 
         <dl className="flex flex-wrap gap-x-5 gap-y-1 text-xs">
@@ -124,7 +124,7 @@ export function FindingCard({ finding, defaultExpanded = false }: FindingCardPro
         {textOrNull(finding.remediation) && (
           <div className="rounded-r border-l-2 border-accent bg-sunken px-3 py-2">
             <h4 className="text-xs font-semibold text-ink">Remediation</h4>
-            <p className="mt-0.5 whitespace-pre-line break-words text-ink-secondary">{finding.remediation}</p>
+            <p className="mt-0.5 whitespace-pre-line wrap-break-word text-ink-secondary">{finding.remediation}</p>
           </div>
         )}
 

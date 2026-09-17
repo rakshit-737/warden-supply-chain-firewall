@@ -19,5 +19,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["vite.config.ts", "tailwind.config.ts", "src/theme/palette.ts"]
+  "include": ["vite.config.ts", "src/theme/palette.ts"]
 }

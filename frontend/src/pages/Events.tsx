@@ -94,11 +94,11 @@ function EventsView() {
       id: "event",
       header: "Event",
       cell: (event) => (
-        <div className="min-w-[12rem] max-w-md">
+        <div className="min-w-48 max-w-md">
           <button
             type="button"
             aria-haspopup="dialog"
-            className="break-words text-left font-medium text-ink hover:text-accent hover:underline"
+            className="wrap-break-word text-left font-medium text-ink hover:text-accent hover:underline"
             onClick={() => setSelected(event)}
           >
             {revealInvisible(event.title)}
@@ -193,7 +193,7 @@ function EventsView() {
       )}
 
       <Card flush>
-        <div ref={tableRegionRef} tabIndex={-1} className="focus:outline-none">
+        <div ref={tableRegionRef} tabIndex={-1} className="focus:outline-hidden">
           <DataTable
             caption="Security events"
             columns={columns}

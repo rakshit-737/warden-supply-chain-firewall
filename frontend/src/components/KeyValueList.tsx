@@ -24,7 +24,7 @@ export function KeyValueList({ items, columns = 1, emptyText = "Not recorded" }:
           <div key={item.key ?? index} className="grid min-w-0 grid-cols-[minmax(7rem,38%)_minmax(0,1fr)] gap-3">
             <dt className="text-ink-secondary">{item.term}</dt>
             <dd
-              className={`min-w-0 break-words ${
+              className={`min-w-0 wrap-break-word ${
                 missing ? "text-ink-muted" : item.mono ? "font-mono text-[0.8125rem] text-ink" : "text-ink"
               }`}
             >

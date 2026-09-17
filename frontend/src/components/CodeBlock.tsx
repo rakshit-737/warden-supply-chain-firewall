@@ -24,7 +24,7 @@ export function CodeBlock({ value, label, maxChars = DEFAULT_MAX_CHARS, classNam
       {label && <figcaption className="mb-1 text-xs text-ink-secondary">{label}</figcaption>}
       <pre
         tabIndex={0}
-        className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded border border-line bg-sunken p-3 font-mono text-xs leading-relaxed text-ink [overflow-wrap:anywhere]"
+        className="max-h-96 overflow-auto whitespace-pre-wrap wrap-break-word rounded-sm border border-line bg-sunken p-3 font-mono text-xs leading-relaxed text-ink wrap-anywhere"
       >
         <code>{revealInvisible(text)}</code>
       </pre>

@@ -47,7 +47,7 @@ function Verdict({ verdict }: { verdict: IntegrityVerdict }) {
         <p className="font-condensed text-xl font-semibold leading-tight text-ink">{verdict.headline}</p>
         <p className="mt-0.5 text-ink-secondary">{verdict.summary}</p>
         {verdict.reason && (
-          <p className="mt-1 break-words text-ink">
+          <p className="mt-1 wrap-break-word text-ink">
             <span className="text-ink-secondary">Reason reported by the server: </span>
             {revealInvisible(verdict.reason)}
           </p>

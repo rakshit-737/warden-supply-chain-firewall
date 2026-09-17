@@ -17,7 +17,7 @@ export function scanSummaryColumns(options: { showEnvironment?: boolean } = {}):
       cell: (scan) => (
         <Link
           to={`/scans/${encodeURIComponent(scan.id)}`}
-          className="break-words font-mono text-[0.8125rem] text-ink hover:text-accent hover:underline"
+          className="wrap-break-word font-mono text-[0.8125rem] text-ink hover:text-accent hover:underline"
         >
           {scan.package_name}
           <span className="text-ink-muted">=={scan.version}</span>

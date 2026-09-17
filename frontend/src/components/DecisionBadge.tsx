@@ -40,7 +40,7 @@ export function DecisionBadge({ value, size = "sm", className = "" }: DecisionBa
   return (
     <span
       data-decision={decision ?? "unknown"}
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded border border-line bg-raised px-1.5 py-0.5 text-xs font-semibold text-ink ${className}`}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-sm border border-line bg-raised px-1.5 py-0.5 text-xs font-semibold text-ink ${className}`}
     >
       <DecisionGlyph decision={decision} className="h-2.5 w-2.5" />
       {label}

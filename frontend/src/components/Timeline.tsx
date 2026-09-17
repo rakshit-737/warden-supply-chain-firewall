@@ -32,14 +32,14 @@ export function Timeline({ items, label }: TimelineProps) {
           </span>
           <div className={`min-w-0 ${index < items.length - 1 ? "pb-3" : ""}`}>
             <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-              <span className="min-w-0 break-words font-medium text-ink">{item.title}</span>
+              <span className="min-w-0 wrap-break-word font-medium text-ink">{item.title}</span>
               {item.time && (
                 <time dateTime={item.time} className="text-xs tabular-nums text-ink-muted">
                   {formatDateTime(item.time)}
                 </time>
               )}
             </div>
-            {item.description && <div className="mt-0.5 min-w-0 break-words text-ink-secondary">{item.description}</div>}
+            {item.description && <div className="mt-0.5 min-w-0 wrap-break-word text-ink-secondary">{item.description}</div>}
           </div>
         </li>
       ))}

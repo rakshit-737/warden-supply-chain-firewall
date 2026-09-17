@@ -67,7 +67,7 @@ function ScanResult({ scan }: { scan: Scan }) {
                 rules.length > 0 ? (
                   <span className="flex flex-wrap gap-1.5">
                     {rules.map((rule) => (
-                      <code key={rule} className="break-all rounded bg-raised px-1.5 py-0.5 font-mono text-2xs">
+                      <code key={rule} className="break-all rounded-sm bg-raised px-1.5 py-0.5 font-mono text-2xs">
                         {rule}
                       </code>
                     ))}

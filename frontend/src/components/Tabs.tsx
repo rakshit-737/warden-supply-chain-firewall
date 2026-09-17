@@ -76,7 +76,7 @@ export function Tabs({ tabs, label, value, defaultValue, onChange }: TabsProps) 
             >
               {tab.label}
               {tab.count !== undefined && (
-                <span className="rounded bg-raised px-1.5 text-2xs tabular-nums text-ink-secondary">{tab.count}</span>
+                <span className="rounded-sm bg-raised px-1.5 text-2xs tabular-nums text-ink-secondary">{tab.count}</span>
               )}
             </button>
           );

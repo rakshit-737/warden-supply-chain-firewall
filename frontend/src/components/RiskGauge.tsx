@@ -4,7 +4,7 @@ import { SEVERITY_FILL, SEVERITY_TRACK } from "../theme/classes";
 const SIZES = {
   sm: { root: "gap-2", value: "w-7 text-right text-[0.8125rem] tabular-nums", track: "h-1.5 w-16" },
   md: { root: "gap-2.5", value: "w-8 text-right text-sm font-semibold tabular-nums", track: "h-2 w-28" },
-  lg: { root: "w-full gap-3", value: "font-condensed text-4xl font-semibold leading-none", track: "h-2.5 min-w-[8rem] flex-1" },
+  lg: { root: "w-full gap-3", value: "font-condensed text-4xl font-semibold leading-none", track: "h-2.5 min-w-32 flex-1" },
 } as const;
 
 export interface RiskGaugeProps {

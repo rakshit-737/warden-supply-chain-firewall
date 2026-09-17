@@ -42,10 +42,10 @@ const COLUMNS: readonly Column<ToolRow>[] = [
   {
     id: "detail",
     header: "Detail",
-    className: "min-w-[12rem]",
+    className: "min-w-48",
     cell: (tool) =>
       tool.detail ? (
-        <span className="break-words text-ink-secondary">{revealInvisible(tool.detail)}</span>
+        <span className="wrap-break-word text-ink-secondary">{revealInvisible(tool.detail)}</span>
       ) : (
         <span className="text-ink-muted">None</span>
       ),

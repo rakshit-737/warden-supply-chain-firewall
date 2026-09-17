@@ -39,8 +39,8 @@ export function SecurityPosture({ report }: { report: PostureReport }) {
                 {TONE_LABEL[observation.tone]}
               </span>
               <div className="min-w-0">
-                <p className="break-words font-medium text-ink">{revealInvisible(observation.title)}</p>
-                <p className="break-words text-ink-secondary">{revealInvisible(observation.detail)}</p>
+                <p className="wrap-break-word font-medium text-ink">{revealInvisible(observation.title)}</p>
+                <p className="wrap-break-word text-ink-secondary">{revealInvisible(observation.detail)}</p>
               </div>
             </li>
           ))}

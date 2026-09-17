@@ -1,6 +1,99 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@theme {
+  --color-*: initial;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+  --color-inherit: inherit;
+  --color-black: #000000;
+  --color-page: #13171d;
+  --color-panel: #1a1f27;
+  --color-raised: #222832;
+  --color-sunken: #0f1318;
+
+  --color-line: #2f3743;
+  --color-line-strong: #434d5b;
+
+  --color-ink: #e7ebf1;
+  --color-ink-secondary: #b3bcc9;
+  --color-ink-muted: #8f99a8;
+
+  --color-accent: #a898ff;
+
+  --color-sev-info: #8f99a8;
+  --color-sev-low: #58a6e8;
+  --color-sev-medium: #f2d04b;
+  --color-sev-high: #f07a3a;
+  --color-sev-critical: #db3a7b;
+
+  --color-verdict-allow: #2fbf5b;
+  --color-verdict-warn: #f2d04b;
+  --color-verdict-block: #db3a7b;
+
+  --font-*: initial;
+  --font-sans:
+    Barlow, ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+    'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-condensed:
+    'Barlow Semi Condensed', Barlow, ui-sans-serif, system-ui, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-mono:
+    'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, 'Liberation Mono', 'Courier New', monospace;
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+@utility btn {
+  @apply inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-sm px-3 text-[0.8125rem] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-60;
+}
+
+@utility btn-primary {
+  @apply btn bg-accent text-page hover:brightness-110;
+}
+
+@utility btn-secondary {
+  @apply btn border border-line-strong bg-raised text-ink hover:border-ink-muted;
+}
+
+@utility btn-ghost {
+  @apply btn text-ink-secondary hover:bg-raised hover:text-ink;
+}
+
+@utility btn-danger {
+  @apply btn bg-sev-critical text-page hover:brightness-110;
+}
+
+@utility input {
+  @apply h-8 w-full rounded-sm border border-line-strong bg-sunken px-2.5 text-[0.8125rem] text-ink placeholder:text-ink-muted focus:border-accent disabled:cursor-not-allowed disabled:opacity-60;
+
+  &textarea {
+    @apply h-auto py-2 font-mono text-xs leading-relaxed;
+  }
+}
+
+@utility label {
+  @apply mb-1 block text-xs font-medium text-ink-secondary;
+}
 
 @layer base {
   :root {
@@ -24,7 +117,7 @@
   }
 
   :focus-visible {
-    outline: 2px solid theme("colors.accent");
+    outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
 
@@ -57,39 +150,5 @@
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
     }
-  }
-}
-
-@layer components {
-  .btn {
-    @apply inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded px-3 text-[0.8125rem] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-60;
-  }
-
-  .btn-primary {
-    @apply btn bg-accent text-page hover:brightness-110;
-  }
-
-  .btn-secondary {
-    @apply btn border border-line-strong bg-raised text-ink hover:border-ink-muted;
-  }
-
-  .btn-ghost {
-    @apply btn text-ink-secondary hover:bg-raised hover:text-ink;
-  }
-
-  .btn-danger {
-    @apply btn bg-sev-critical text-page hover:brightness-110;
-  }
-
-  .input {
-    @apply h-8 w-full rounded border border-line-strong bg-sunken px-2.5 text-[0.8125rem] text-ink placeholder:text-ink-muted focus:border-accent disabled:cursor-not-allowed disabled:opacity-60;
-  }
-
-  textarea.input {
-    @apply h-auto py-2 font-mono text-xs leading-relaxed;
-  }
-
-  .label {
-    @apply mb-1 block text-xs font-medium text-ink-secondary;
   }
 }

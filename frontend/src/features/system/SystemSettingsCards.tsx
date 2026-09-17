@@ -40,8 +40,8 @@ function SettingsList({ rows }: { rows: readonly SettingRow[] }) {
           key={row.key}
           className="grid grid-cols-[minmax(0,1fr)_minmax(0,auto)] items-baseline gap-4 border-b border-line/60 py-1.5 last:border-0"
         >
-          <dt className="min-w-0 break-words text-ink-secondary">{revealInvisible(row.label)}</dt>
-          <dd className="min-w-0 break-words text-right [overflow-wrap:anywhere]">
+          <dt className="min-w-0 wrap-break-word text-ink-secondary">{revealInvisible(row.label)}</dt>
+          <dd className="min-w-0 wrap-break-word text-right wrap-anywhere">
             <SettingValue row={row} />
           </dd>
         </div>

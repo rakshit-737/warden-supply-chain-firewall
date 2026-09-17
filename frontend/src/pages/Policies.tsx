@@ -118,7 +118,7 @@ function ThresholdScale({ warn, block }: { warn: number | null; block: number | 
   parts.push(`${block} and above are blocked`);
   return (
     <div>
-      <div aria-hidden="true" className="flex h-2 gap-[2px] overflow-hidden rounded">
+      <div aria-hidden="true" className="flex h-2 gap-[2px] overflow-hidden rounded-sm">
         {segments.map((segment) => (
           <span
             key={segment.decision}
@@ -309,7 +309,7 @@ export default function Policies() {
             type="button"
             aria-current={current ? "true" : undefined}
             onClick={() => choose(policy)}
-            className={`break-words text-left hover:text-accent hover:underline ${current ? "font-semibold text-ink" : "text-ink"}`}
+            className={`wrap-break-word text-left hover:text-accent hover:underline ${current ? "font-semibold text-ink" : "text-ink"}`}
           >
             {policy.name}
           </button>

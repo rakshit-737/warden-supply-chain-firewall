@@ -1,6 +1,7 @@
 /**
- * Warden X console palette (dark only). Single source of colour values for Tailwind
- * (tailwind.config.ts) and for chart code that needs raw values (Recharts).
+ * Warden X console palette (dark only). Colour values for chart code that needs raw values
+ * (Recharts). Tailwind reads the same values from the @theme block in src/index.css;
+ * palette.test.ts keeps the two in sync.
  *
  * Severity and decision marks were checked with a palette validator against the panel surface
  * (#1A1F27): adjacent pairs clear colour-vision-deficiency separation (OKLab dE >= 13) and the

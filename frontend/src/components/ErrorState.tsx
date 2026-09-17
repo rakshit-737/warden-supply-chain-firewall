@@ -14,7 +14,7 @@ export function ErrorState({ error, title = "This data could not be loaded", onR
   return (
     <div role="alert" className="flex flex-col items-start gap-1 rounded-r-md border-l-2 border-sev-critical bg-sunken px-4 py-3">
       <p className="font-medium text-ink">{title}</p>
-      <p className="break-words text-ink-secondary">{info.message}</p>
+      <p className="wrap-break-word text-ink-secondary">{info.message}</p>
       {(info.status !== null || info.requestId) && (
         <p className="text-xs text-ink-muted">
           {info.status !== null && <span>HTTP {info.status}</span>}

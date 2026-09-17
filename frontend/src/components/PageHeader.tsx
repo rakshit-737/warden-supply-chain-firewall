@@ -25,7 +25,7 @@ export function PageHeader({ title, heading, description, meta, actions, back }:
             {back.label}
           </Link>
         )}
-        <h1 className="break-words font-condensed text-2xl font-semibold leading-tight text-ink">{heading ?? title}</h1>
+        <h1 className="wrap-break-word font-condensed text-2xl font-semibold leading-tight text-ink">{heading ?? title}</h1>
         {description && <p className="mt-1 max-w-3xl text-ink-secondary">{description}</p>}
         {meta && <div className="mt-2">{meta}</div>}
       </div>

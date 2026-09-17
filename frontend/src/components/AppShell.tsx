@@ -71,7 +71,7 @@ export function AppShell() {
     <div className="min-h-full lg:grid lg:grid-cols-[13.5rem_minmax(0,1fr)]">
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded focus:bg-accent focus:px-3 focus:py-2 focus:text-page"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-sm focus:bg-accent focus:px-3 focus:py-2 focus:text-page"
       >
         Skip to main content
       </a>
@@ -154,8 +154,8 @@ export function AppShell() {
         </div>
       </aside>
 
-      <main ref={mainRef} id="main-content" tabIndex={-1} className="min-w-0 px-4 py-5 focus:outline-none sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-[96rem]">
+      <main ref={mainRef} id="main-content" tabIndex={-1} className="min-w-0 px-4 py-5 focus:outline-hidden sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-384">
           <RouteErrorBoundary resetKey={pathname}>
             <Suspense fallback={<LoadingBlock label="Loading view" rows={6} />}>
               <Outlet />

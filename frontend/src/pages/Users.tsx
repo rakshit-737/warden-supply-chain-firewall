@@ -161,7 +161,7 @@ function UsersView() {
         <span className="inline-flex flex-wrap items-center gap-x-2">
           <span className="break-all text-ink">{revealInvisible(user.email)}</span>
           {me?.id === user.id && (
-            <span className="rounded border border-line-strong px-1 text-2xs text-ink-secondary">You</span>
+            <span className="rounded-sm border border-line-strong px-1 text-2xs text-ink-secondary">You</span>
           )}
         </span>
       ),
@@ -249,7 +249,7 @@ function UsersView() {
           ref={noticeRef}
           role="status"
           tabIndex={-1}
-          className="mb-4 break-words rounded-r-md border-l-2 border-verdict-allow bg-panel px-4 py-2 text-ink"
+          className="mb-4 wrap-break-word rounded-r-md border-l-2 border-verdict-allow bg-panel px-4 py-2 text-ink"
         >
           {notice}
         </p>

@@ -49,7 +49,7 @@ function VerdictsCard({ stats }: { stats: ScanStats }) {
         <EmptyState compact title="No scans yet." />
       ) : (
         <>
-          <div aria-hidden="true" className="flex h-3 w-full gap-[2px] overflow-hidden rounded">
+          <div aria-hidden="true" className="flex h-3 w-full gap-[2px] overflow-hidden rounded-sm">
             {counts
               .filter((entry) => entry.count > 0)
               .map((entry) => (
@@ -88,14 +88,14 @@ function SeverityCard({ stats }: { stats: ScanStats }) {
 
   const toggle =
     sum > 0 ? (
-      <div role="group" aria-label="Severity view" className="flex rounded border border-line p-0.5">
+      <div role="group" aria-label="Severity view" className="flex rounded-sm border border-line p-0.5">
         {(["chart", "table"] as const).map((option) => (
           <button
             key={option}
             type="button"
             aria-pressed={view === option}
             onClick={() => setView(option)}
-            className={`rounded-sm px-2 py-0.5 text-xs ${view === option ? "bg-raised text-ink" : "text-ink-secondary hover:text-ink"}`}
+            className={`rounded-xs px-2 py-0.5 text-xs ${view === option ? "bg-raised text-ink" : "text-ink-secondary hover:text-ink"}`}
           >
             {option === "chart" ? "Chart" : "Table"}
           </button>

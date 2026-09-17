@@ -46,7 +46,7 @@ export function RiskBreakdownBars({ dimensions }: RiskBreakdownBarsProps) {
               <ConfidencePill value={dimension.confidence} compact />
             </span>
             {dimension.rationale && (
-              <p className="break-words text-xs text-ink-secondary sm:col-span-3">{dimension.rationale}</p>
+              <p className="wrap-break-word text-xs text-ink-secondary sm:col-span-3">{dimension.rationale}</p>
             )}
           </li>
         );

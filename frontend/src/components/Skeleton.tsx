@@ -1,5 +1,5 @@
 export function Skeleton({ className = "" }: { className?: string }) {
-  return <span aria-hidden="true" className={`block animate-pulse rounded bg-raised ${className}`} />;
+  return <span aria-hidden="true" className={`block animate-pulse rounded-sm bg-raised ${className}`} />;
 }
 
 export interface LoadingBlockProps {

@@ -23,7 +23,7 @@ export function ScopeChips({ codes, categories, limit, emptyText = "No codes or 
       {shown.map((item) => (
         <span
           key={item.key}
-          className={`break-all rounded bg-raised px-1.5 py-0.5 text-2xs text-ink ${item.mono ? "font-mono" : ""}`}
+          className={`break-all rounded-sm bg-raised px-1.5 py-0.5 text-2xs text-ink ${item.mono ? "font-mono" : ""}`}
         >
           {item.label}
         </span>

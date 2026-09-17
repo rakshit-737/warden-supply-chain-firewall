@@ -135,7 +135,7 @@ function AuditView() {
           />
           <AuditFilterBar filters={filters} currentUserId={currentUserId} onChange={updateParams} />
           <Card flush>
-            <div ref={tableRegionRef} tabIndex={-1} className="focus:outline-none">
+            <div ref={tableRegionRef} tabIndex={-1} className="focus:outline-hidden">
               <DataTable
                 caption="Audit log"
                 columns={columns}

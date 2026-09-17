@@ -47,7 +47,7 @@ export function ScopePicker({ codes, categories, onCodesChange, onCategoriesChan
         <p id="exc-categories-hint" className="mb-2 text-xs text-ink-muted">
           Optional. Covers findings in the selected categories. At most {MAX_CATEGORIES}.
         </p>
-        <div className="grid max-h-64 gap-x-4 overflow-y-auto rounded border border-line bg-sunken p-2 sm:grid-cols-2">
+        <div className="grid max-h-64 gap-x-4 overflow-y-auto rounded-sm border border-line bg-sunken p-2 sm:grid-cols-2">
           {EXCEPTION_CATEGORIES.map((category) => (
             <label key={category} className="flex items-center gap-2 py-0.5 text-[0.8125rem] text-ink">
               <input
@@ -95,7 +95,7 @@ export function ScopePicker({ codes, categories, onCodesChange, onCategoriesChan
                 <button
                   type="button"
                   aria-label={`Remove ${code}`}
-                  className="inline-flex items-center gap-1 rounded border border-line-strong bg-raised px-1.5 py-0.5 font-mono text-2xs text-ink hover:border-ink-muted"
+                  className="inline-flex items-center gap-1 rounded-sm border border-line-strong bg-raised px-1.5 py-0.5 font-mono text-2xs text-ink hover:border-ink-muted"
                   onClick={() => {
                     onCodesChange(toggled(codes, code, false));
                     filterRef.current?.focus();
@@ -111,7 +111,7 @@ export function ScopePicker({ codes, categories, onCodesChange, onCategoriesChan
         <p className="sr-only" aria-live="polite">
           {codes.length === 1 ? "1 code selected" : `${codes.length} codes selected`}
         </p>
-        <div className="max-h-64 overflow-y-auto rounded border border-line bg-sunken p-2">
+        <div className="max-h-64 overflow-y-auto rounded-sm border border-line bg-sunken p-2">
           {groups.length === 0 ? (
             <p className="text-xs text-ink-muted">No codes match the filter.</p>
           ) : (

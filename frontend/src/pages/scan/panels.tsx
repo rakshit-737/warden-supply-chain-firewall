@@ -144,7 +144,7 @@ function FindingLink({
         event.preventDefault();
         onFindingClick(findingId);
       }}
-      className="inline-flex rounded border border-line px-1.5 py-0.5 font-mono text-2xs text-ink-secondary hover:border-accent hover:text-ink"
+      className="inline-flex rounded-sm border border-line px-1.5 py-0.5 font-mono text-2xs text-ink-secondary hover:border-accent hover:text-ink"
     >
       {findings.get(findingId)?.code ?? findingId}
     </a>
@@ -180,7 +180,7 @@ export function PolicyOutcome({
             return (
               <li key={`${reason.rule}-${index}`} className="py-2">
                 <code className="break-all font-mono text-xs text-ink">{reason.rule}</code>
-                {textOrNull(reason.detail) && <p className="break-words text-ink-secondary">{reason.detail}</p>}
+                {textOrNull(reason.detail) && <p className="wrap-break-word text-ink-secondary">{reason.detail}</p>}
                 {ids.length > 0 && (
                   <ul aria-label="Findings behind this rule" className="mt-1 flex flex-wrap gap-1.5">
                     {ids.map((id) => (
@@ -198,7 +198,7 @@ export function PolicyOutcome({
         <ul aria-label="Matched policy rules" className="mt-2 flex flex-wrap gap-1.5">
           {rules.map((rule) => (
             <li key={rule}>
-              <code className="break-all rounded bg-raised px-1.5 py-0.5 font-mono text-2xs text-ink">{rule}</code>
+              <code className="break-all rounded-sm bg-raised px-1.5 py-0.5 font-mono text-2xs text-ink">{rule}</code>
             </li>
           ))}
         </ul>
@@ -358,7 +358,7 @@ export function RiskPanel({ scan }: { scan: Scan }) {
                     const minimum = numberOrNull(floor.minimum);
                     const codes = stringArray(floor.codes);
                     return (
-                      <li key={`${textOrNull(floor.rule) ?? "floor"}-${index}`} className="break-words">
+                      <li key={`${textOrNull(floor.rule) ?? "floor"}-${index}`} className="wrap-break-word">
                         <code className="font-mono text-ink">{textOrNull(floor.rule) ?? "Unnamed floor"}</code>
                         {minimum !== null && ` sets a minimum final score of ${minimum}`}
                         {codes.length > 0 && ` (${codes.join(", ")})`}
@@ -446,7 +446,7 @@ const VULNERABILITY_COLUMNS: Column<Vulnerability>[] = [
         <div className="min-w-0 max-w-md">
           <code className="break-all font-mono text-xs text-ink">{vuln.id}</code>
           {aliases.length > 0 && <div className="break-all text-2xs text-ink-muted">{aliases.join(", ")}</div>}
-          {textOrNull(vuln.summary) && <div className="mt-0.5 break-words text-xs text-ink-secondary">{vuln.summary}</div>}
+          {textOrNull(vuln.summary) && <div className="mt-0.5 wrap-break-word text-xs text-ink-secondary">{vuln.summary}</div>}
         </div>
       );
     },
@@ -480,7 +480,7 @@ const VULNERABILITY_COLUMNS: Column<Vulnerability>[] = [
     cell: (vuln) =>
       vuln.kev === true ? (
         <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-semibold text-ink">
-          <span aria-hidden="true" className="h-2 w-2 rounded-sm bg-sev-critical" />
+          <span aria-hidden="true" className="h-2 w-2 rounded-xs bg-sev-critical" />
           In CISA KEV
         </span>
       ) : (
@@ -714,7 +714,7 @@ const RUN_COLUMNS: Column<RunRow>[] = [
     header: "Detail",
     cell: (row) =>
       textOrNull(row.run.detail) ? (
-        <span className="break-words text-xs text-ink-secondary">{row.run.detail}</span>
+        <span className="wrap-break-word text-xs text-ink-secondary">{row.run.detail}</span>
       ) : (
         <span className="text-xs text-ink-muted">None</span>
       ),
