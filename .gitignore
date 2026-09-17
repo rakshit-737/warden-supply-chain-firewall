@@ -47,3 +47,6 @@ warden-results.sarif
 # Local tooling
 .claude/
 .opencode
+
+# Built documentation site
+/site/
