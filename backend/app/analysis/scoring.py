@@ -70,6 +70,9 @@ _SUPPORT_CAP = 9.0
 # to raise the verdict freely. Below it, the model may add at most ML_ESCALATION_MARGIN.
 ML_TRUSTED_RULE_SCORE = 35
 ML_ESCALATION_MARGIN = 25
+# A finding at least this confident (and high or critical) lets the model escalate freely.
+ML_SUPPORT_CONFIDENCE = 0.7
+HIGH_BAND = 60  # severity_for: >= 60 is high
 SUPPORT_CAP = _SUPPORT_CAP
 
 # Dimensions scored elsewhere and excluded from the behavioural rule score.
@@ -175,7 +178,8 @@ def rule_contributions(signals: Iterable[Signal | Mapping[str, Any]]) -> list[di
     return rows
 
 
-def fuse(rule_score: int, ml_score: int, ml_available: bool, mode: str | None = None) -> int:
+def fuse(rule_score: int, ml_score: int, ml_available: bool, mode: str | None = None, *,
+         supported: bool | None = None) -> int:
     """Fuse rule and ML scores; the result is never below ``rule_score``.
 
     The model may sharpen a verdict the deterministic rules already support, but it may not
@@ -186,6 +190,12 @@ def fuse(rule_score: int, ml_score: int, ml_available: bool, mode: str | None = 
     :data:`ML_ESCALATION_MARGIN` points. That keeps a model-only opinion inside the
     medium band, where it prompts review rather than blocking a build, while leaving the
     model free to escalate once real evidence exists.
+
+    ``supported`` (when given) says whether that evidence exists: at least one high or critical
+    finding with confidence >= :data:`ML_SUPPORT_CONFIDENCE`. The synthetic benchmark showed the
+    model turning a handful of low-confidence capability findings in a small package (a compiler
+    call in ``setup.py``) into a 99, so without such a finding the same margin applies even above
+    :data:`ML_TRUSTED_RULE_SCORE`.
     """
     if not ml_available:
         return int(max(0, min(100, rule_score)))
@@ -195,7 +205,22 @@ def fuse(rule_score: int, ml_score: int, ml_available: bool, mode: str | None = 
         risk = max(rule_score, ml_score)
     if rule_score < ML_TRUSTED_RULE_SCORE:
         risk = min(risk, rule_score + ML_ESCALATION_MARGIN)
+    elif supported is False:
+        # Unsupported escalation stays below the high band (or at the rule score if already there).
+        risk = min(risk, max(rule_score, min(rule_score + ML_ESCALATION_MARGIN, HIGH_BAND - 1)))
     return int(max(0, min(100, risk)))
+
+
+def supports_escalation(signals: list) -> bool:
+    """True when a high or critical finding with confidence >= ML_SUPPORT_CONFIDENCE exists."""
+    for s in signals:
+        severity = s.get("severity") if isinstance(s, dict) else getattr(s, "severity", None)
+        severity = getattr(severity, "value", severity)
+        confidence = s.get("confidence") if isinstance(s, dict) else getattr(s, "confidence", None)
+        confident = (confidence if confidence is not None else 0.8) >= ML_SUPPORT_CONFIDENCE
+        if severity in ("high", "critical") and confident:
+            return True
+    return False
 
 
 def score(signals: list[Signal], ctx) -> RiskResult:
@@ -211,7 +236,7 @@ def score(signals: list[Signal], ctx) -> RiskResult:
     else:
         ml_score, anomaly = model.predict(features)
 
-    risk = fuse(rule_score, int(ml_score), model.available)
+    risk = fuse(rule_score, int(ml_score), model.available, supported=supports_escalation(signals))
     return RiskResult(
         rule_score=rule_score,
         ml_score=ml_score,
