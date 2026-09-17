@@ -34,7 +34,7 @@ from app.analysis.analyzers.base import BaseAnalyzer, PackageContext
 from app.analysis.findings import Location
 from app.analysis.signals import Capability, Code, Severity, Signal
 
-ANALYZER_VERSION = "1.1.0"
+ANALYZER_VERSION = "1.2.0"
 
 # Modules whose mere import is a meaningful risk indicator.
 DANGEROUS_IMPORTS = {
@@ -52,6 +52,14 @@ NETWORK_MODULES = {"requests", "urllib", "urllib2", "urllib3", "httpx", "http", 
 # dependency handling and would swamp the signal with false positives. `eval`/`exec`/
 # `compile` are the meaningful dynamic-execution primitives.
 DYNAMIC_CALLS = {"eval", "exec", "compile"}
+# Socket calls that open or use an outbound connection (only counted when ``socket`` is imported).
+SOCKET_EGRESS_CALLS = {"create_connection", "connect", "connect_ex", "sendall", "sendto"}
+# Calls that serialise or encode their argument; applied to the whole environment they package it
+# up for sending somewhere, which ordinary configuration code does not do.
+SERIALISING_CALLS = {"dumps", "dump", "b64encode", "urlencode", "str", "repr", "encode"}
+# Substrings a credential-filtering comprehension over os.environ looks for.
+CREDENTIAL_WORDS = ("KEY", "TOKEN", "SECRET", "PASS", "AWS", "CRED", "AUTH")
+ENV_DUMP = "<entire environment>"
 # Environment variables / paths that credential-stealers commonly read.
 SENSITIVE_ENV = {
     "AWS_SECRET_ACCESS_KEY", "AWS_ACCESS_KEY_ID", "GITHUB_TOKEN", "GH_TOKEN",
@@ -146,10 +154,18 @@ class _Walker:
         self.locations = LocationCollector()
         self.file_index = 0
         self.relpath = ""
+        # Per-file import aliases (``import os as _o`` -> {"_o": "os"}), so aliased calls are
+        # resolved to the module they come from.
+        self.aliases: dict[str, str] = {}
 
     def begin_file(self, index: int, relpath: str) -> None:
         self.file_index = index
         self.relpath = relpath
+        self.aliases = {}
+
+    def _root(self, node: ast.Attribute) -> str | None:
+        root = _attr_root(node)
+        return self.aliases.get(root, root) if root is not None else None
 
     def visit(self, tree: ast.AST) -> None:
         stack: list[ast.AST] = [tree]
@@ -179,7 +195,10 @@ class _Walker:
 
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
-            self._import(alias.name.split(".")[0], node)
+            top = alias.name.split(".")[0]
+            if alias.asname:
+                self.aliases[alias.asname] = top
+            self._import(top, node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         if node.module:
@@ -192,10 +211,18 @@ class _Walker:
             self.dynamic_exec += 1
             self._note("dynamic_exec", func.id)
             self._loc(Code.DYNAMIC_EXEC, node)
+        # getattr(builtins, "ex" + "ec"): a dynamic-execution name assembled from pieces.
+        if isinstance(func, ast.Name) and func.id == "getattr" and len(node.args) >= 2 and \
+                not isinstance(node.args[1], ast.Constant):
+            name = _fold_str(node.args[1])
+            if name in DYNAMIC_CALLS:
+                self.dynamic_exec += 1
+                self._note("dynamic_exec", f"getattr:{name} (reconstructed)")
+                self._loc(Code.DYNAMIC_EXEC, node)
         # Attribute calls: os.system, subprocess.Popen, os.environ.get(...)
         if isinstance(func, ast.Attribute):
             attr = func.attr
-            root = _attr_root(func)
+            root = self._root(func)
             if root == "os" and attr in {"system", "popen", "execv", "execve", "spawnv"}:
                 self.subprocess += 1
                 self._note("process_calls", f"os.{attr}")
@@ -204,10 +231,16 @@ class _Walker:
                 self.subprocess += 1
                 self._note("process_calls", f"subprocess.{attr}")
                 self._loc(Code.SUBPROCESS_EXEC, node)
-            if root in NETWORK_MODULES and attr in {"get", "post", "urlopen", "request", "Request", "connect"}:
+            if root in NETWORK_MODULES and attr in {"get", "post", "urlopen", "urlretrieve", "request", "Request",
+                                                    "connect"}:
                 self.network += 1
                 self._note("network_calls", f"{root}.{attr}")
                 self._loc(Code.NETWORK_EGRESS, node)
+            elif attr in SOCKET_EGRESS_CALLS and "socket" in self.imports:
+                self.network += 1
+                self._note("network_calls", f"socket.{attr}")
+                self._loc(Code.NETWORK_EGRESS, node)
+        self._check_environment_dump(node)
         # Environment variable harvesting: os.environ[...] / os.getenv(...)
         self._check_env_access(node)
 
@@ -223,9 +256,41 @@ class _Walker:
                     self._note("sensitive_env", key)
                     self._loc(Code.ENV_HARVEST, node)
 
+    def _environment_dump(self, node: ast.AST) -> None:
+        self.env_harvest = True
+        self._note("env_access", ENV_DUMP)
+        self._note("sensitive_env", ENV_DUMP)
+        self._loc(Code.ENV_HARVEST, node)
+
+    def _check_environment_dump(self, node: ast.Call) -> None:
+        # json.dumps(os.environ), str(dict(os.environ)), base64.b64encode(repr(os.environ).encode()) ...
+        func = node.func
+        name = func.attr if isinstance(func, ast.Attribute) else func.id if isinstance(func, ast.Name) else None
+        if name not in SERIALISING_CALLS:
+            return
+        operands = [*node.args, func.value] if isinstance(func, ast.Attribute) else list(node.args)
+        if any(_mentions_environ(arg, self.aliases) for arg in operands):
+            self._environment_dump(node)
+
+    def _visit_comprehension(self, node: ast.AST, generators: list[ast.comprehension]) -> None:
+        # {k: v for k, v in os.environ.items() if "TOKEN" in k}
+        for gen in generators:
+            if _mentions_environ(gen.iter, self.aliases) and any(_has_credential_word(cond) for cond in gen.ifs):
+                self._environment_dump(node)
+                break
+
+    def visit_DictComp(self, node: ast.DictComp) -> None:
+        self._visit_comprehension(node, node.generators)
+
+    def visit_ListComp(self, node: ast.ListComp) -> None:
+        self._visit_comprehension(node, node.generators)
+
+    def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
+        self._visit_comprehension(node, node.generators)
+
     def _check_env_access(self, node: ast.Call) -> None:
         func = node.func
-        if isinstance(func, ast.Attribute) and func.attr in {"getenv"} and _attr_root(func) == "os":
+        if isinstance(func, ast.Attribute) and func.attr in {"getenv"} and self._root(func) == "os":
             self.env_harvest = True
             if node.args:
                 key = _const_str(node.args[0])
@@ -248,11 +313,92 @@ class _Walker:
     # benign docstrings and would be false positives. We care about paths that are *used*.
 
 
+MAX_OPERAND_NODES = 64  # bounded look into call operands, so nested calls cannot go quadratic
+
+
+def _bounded_walk(node: ast.AST) -> list[ast.AST]:
+    out: list[ast.AST] = []
+    stack = [node]
+    while stack and len(out) < MAX_OPERAND_NODES:
+        current = stack.pop()
+        out.append(current)
+        stack.extend(ast.iter_child_nodes(current))
+    return out
+
+
+_ENV_WRAPPERS = {"dict", "list", "sorted", "tuple", "set"}
+_ENV_METHODS = {"copy", "items", "values", "keys"}
+
+
+def _mentions_environ(node: ast.AST, aliases: dict[str, str]) -> bool:
+    """True when ``node`` evaluates to the whole environment: ``os.environ``, ``dict(os.environ)``,
+    ``os.environ.copy()`` / ``.items()``, ``{**os.environ}``. A single lookup such as
+    ``os.environ.get("DEBUG")`` or ``os.environ["HOME"]`` is not the whole environment."""
+    current: ast.AST | None = node
+    for _ in range(MAX_OPERAND_NODES):
+        if isinstance(current, ast.Attribute) and current.attr == "environ":
+            root = _attr_root(current)
+            return aliases.get(root or "", root) == "os"
+        if isinstance(current, ast.Call):
+            func = current.func
+            if isinstance(func, ast.Name) and func.id in _ENV_WRAPPERS and len(current.args) == 1:
+                current = current.args[0]
+                continue
+            if isinstance(func, ast.Attribute) and func.attr in _ENV_METHODS and not current.args:
+                current = func.value
+                continue
+            if isinstance(func, ast.Attribute) and func.attr == "encode":
+                current = func.value
+                continue
+            return False
+        if isinstance(current, ast.Dict):
+            spread = [v for k, v in zip(current.keys, current.values, strict=False) if k is None]
+            return any(_mentions_environ(v, aliases) for v in spread[:4])
+        return False
+    return False
+
+
+def _has_credential_word(node: ast.AST) -> bool:
+    for sub in _bounded_walk(node):
+        text = _const_str(sub) if isinstance(sub, ast.Constant) else None
+        if text and any(word in text.upper() for word in CREDENTIAL_WORDS):
+            return True
+    return False
+
+
 def _attr_root(node: ast.Attribute) -> str | None:
     cur: ast.AST = node
     while isinstance(cur, ast.Attribute):
         cur = cur.value
     return cur.id if isinstance(cur, ast.Name) else None
+
+
+MAX_FOLD_PARTS = 32
+
+
+def _fold_str(node: ast.AST) -> str | None:
+    """Constant-fold ``"a" + "b"`` / ``"".join(["a", "b"])`` / f-strings of constants (bounded)."""
+    parts: list[str] = []
+    stack = [node]
+    while stack:
+        if len(parts) > MAX_FOLD_PARTS:
+            return None
+        current = stack.pop()
+        if isinstance(current, ast.Constant) and isinstance(current.value, str):
+            parts.append(current.value)
+        elif isinstance(current, ast.BinOp) and isinstance(current.op, ast.Add):
+            stack.extend([current.right, current.left])
+        elif isinstance(current, ast.JoinedStr):
+            stack.extend(reversed(current.values))
+        elif isinstance(current, ast.FormattedValue) and current.format_spec is None and current.conversion == -1:
+            stack.append(current.value)
+        elif (isinstance(current, ast.Call) and isinstance(current.func, ast.Attribute)
+              and current.func.attr == "join" and _const_str(current.func.value) == ""
+              and len(current.args) == 1 and isinstance(current.args[0], (ast.List, ast.Tuple))):
+            stack.extend(reversed(current.args[0].elts))
+        else:
+            return None
+    return "".join(parts)
 
 
 def _const_str(node: ast.AST) -> str | None:
