@@ -1,0 +1,2 @@
+--extra-index-url https://packages.example.invalid/simple
+acme-internal-utils==1.0.0

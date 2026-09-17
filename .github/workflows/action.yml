@@ -1,0 +1,71 @@
+# Self-test for the composite action in /action.yml.
+#
+# Runs the action from this checkout against two fixtures: a manifest that must pass and one that must
+# fail the gate. SARIF upload is disabled here so the job keeps a read-only token (and works for pull
+# requests from forks); the reports are checked for shape instead. Actions are SHA-pinned as in ci.yml.
+
+name: Action self-test
+
+on:
+  push:
+    branches: [main]
+    paths: [action.yml, .github/action-fixtures/**, .github/workflows/action.yml, backend/cli/**, backend/app/**, backend/requirements.txt]
+  pull_request:
+    paths: [action.yml, .github/action-fixtures/**, .github/workflows/action.yml, backend/cli/**, backend/app/**, backend/requirements.txt]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: action-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  self-test:
+    name: Composite action (pass and fail fixtures)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Clean manifest passes
+        id: clean
+        uses: ./
+        with:
+          path: .github/action-fixtures/clean
+          fail-on: high
+          sarif-file: clean.sarif
+          upload-sarif: "false"
+
+      - name: Extra index URL fails at medium
+        id: extra
+        continue-on-error: true
+        uses: ./
+        with:
+          path: .github/action-fixtures/extra-index
+          fail-on: medium
+          sarif-file: extra-index.sarif
+          upload-sarif: "false"
+
+      - name: Check outcomes and reports
+        env:
+          CLEAN_CODE: ${{ steps.clean.outputs.exit-code }}
+          EXTRA_CODE: ${{ steps.extra.outputs.exit-code }}
+          EXTRA_OUTCOME: ${{ steps.extra.outcome }}
+        run: |
+          test "${CLEAN_CODE}" = "0"
+          test "${EXTRA_CODE}" = "2"
+          test "${EXTRA_OUTCOME}" = "failure"
+          python3 - <<'PY'
+          import json
+          for name, codes in (("clean.sarif", {"MISSING_HASHES"}),
+                              ("extra-index.sarif", {"INDEX_SOURCE_AMBIGUITY", "MISSING_HASHES"})):
+              log = json.load(open(name, encoding="utf-8"))
+              assert log["version"] == "2.1.0", name
+              found = {r["ruleId"] for r in log["runs"][0]["results"]}
+              assert found == codes, (name, found)
+          print("reports ok")
+          PY
