@@ -188,8 +188,8 @@ def _redactable(value: object) -> bool:
 # word joiner / invisible operators, deprecated format chars, BOM, interlinear annotation
 # controls, and Unicode "tag" characters (invisible ASCII look-alikes used to smuggle text).
 _CONTROL_RE = re.compile(
-    "[\x00-\x08\x0b-\x1f\x7f-\x9f\xad\u061c\u180e\u200b-\u200f\u2028\u2029\u202a-\u202e"
-    "\u2060-\u2064\u2066-\u206f\ufeff\ufff9-\ufffb\U000e0000-\U000e007f]"
+    r"[\x00-\x08\x0b-\x1f\x7f-\x9f\xad\u061c\u180e\u200b-\u200f\u2028\u2029\u202a-\u202e"
+    r"\u2060-\u2064\u2066-\u206f\ufeff\ufff9-\ufffb\U000e0000-\U000e007f]"
 )
 # Terminal escape sequences (CSI such as ``ESC[31m``, OSC, two-byte ESC forms) and single control or
 # invisible characters. Their final byte is often a letter, so they are treated as separators when

@@ -219,7 +219,7 @@ def test_spdx_ids_are_sanitised_unique_and_secrets_redacted(validator):
     # IDs, slugs and purls lower-case names and drop "_", so check the secret body case-insensitively.
     assert TOKEN[4:].lower() not in dumped.lower() and "ghost" not in dumped
     assert "#" not in document["documentNamespace"]
-    control = re.compile("[\x00-\x08\x0b-\x1f\x7f‪-‮]")
+    control = re.compile(r"[\x00-\x08\x0b-\x1f\x7f\u202a-\u202e]")
     assert not control.search(json.loads(dumped)["name"])
     assert all(not control.search(p["name"]) for p in document["packages"])
 

@@ -377,7 +377,7 @@ def test_hostile_strings_are_sanitised_and_secrets_redacted(validator):
     assert_valid(validator, document)
     dumped = json.dumps(document).lower()
     assert TOKEN[4:].lower() not in dumped  # purls / refs lower-case names, so compare the secret body
-    control = re.compile("[\x00-\x08\x0b-\x1f\x7f‪-‮⁦-⁩]")
+    control = re.compile(r"[\x00-\x08\x0b-\x1f\x7f\u202a-\u202e\u2066-\u2069]")
     for value in all_strings(document):
         assert not control.search(value), value
     weird = next(c for c in document["components"] if c["name"].startswith("we"))

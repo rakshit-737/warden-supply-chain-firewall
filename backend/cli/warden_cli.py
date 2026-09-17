@@ -30,7 +30,7 @@ _REQ_LINE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:==\s*([A-Za-z0-9]
 _COLORS = {"allow": "\033[92m", "warn": "\033[93m", "block": "\033[91m", "reset": "\033[0m"}
 # Values echoed from the API originate in package metadata and archives, i.e. attacker input.
 # Escape control and bidirectional characters so nothing can drive the user's terminal.
-_UNSAFE_TERMINAL = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2066-\u2069]")
+_UNSAFE_TERMINAL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2066-\u2069]")
 
 
 def terminal_safe(value: object, max_len: int = 200) -> str:
