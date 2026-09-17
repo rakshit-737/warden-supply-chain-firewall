@@ -78,6 +78,37 @@ def load_inventory(path: str, project_name: str | None = None) -> tuple[Any, lis
     return parse_project(files, name), notes
 
 
+MAX_CONTAINER_FILES = 50
+MAX_CONTAINER_FILE_BYTES = 1_000_000
+
+
+def container_config_findings(path: str, notes: list[str]) -> list:
+    """Lint Dockerfiles and Compose files under ``path`` (bounded walk, links are not followed)."""
+    from app.containers.dockerfile import is_compose_file, is_dockerfile, lint_files
+    from app.sbom.discover import MAX_SCANNED_ENTRIES, SKIP_DIRS
+
+    root = Path(path)
+    files: dict[str, str] = {}
+    seen = 0
+    for current, dirs, names in os.walk(root, followlinks=False):
+        rel_dir = Path(current).relative_to(root)
+        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS and len(rel_dir.parts) < 4
+                         and not os.path.islink(os.path.join(current, d)))
+        for name in sorted(names):
+            seen += 1
+            if seen > MAX_SCANNED_ENTRIES or len(files) >= MAX_CONTAINER_FILES:
+                notes.append("container file discovery stopped at its bounds")
+                return lint_files(files)
+            if not (is_dockerfile(name) or is_compose_file(name)):
+                continue
+            full = Path(current) / name
+            if full.is_symlink() or not full.is_file() or full.stat().st_size > MAX_CONTAINER_FILE_BYTES:
+                notes.append(f"skipped container file {_safe((rel_dir / name).as_posix())}")
+                continue
+            files[(rel_dir / name).as_posix()] = full.read_text(encoding="utf-8", errors="replace")
+    return lint_files(files)
+
+
 # --------------------------------------------------------------------------- sbom generate
 def cmd_sbom_generate(args: Any) -> int:
     try:
@@ -161,7 +192,8 @@ def cmd_project_scan(args: Any) -> int:
     from app.graph.engine import build_graph
     from app.sbom import hygiene_findings
 
-    findings = [*hygiene_findings(inventory), *project_confusion_findings(inventory)]
+    findings = [*hygiene_findings(inventory), *project_confusion_findings(inventory),
+                *container_config_findings(args.path, notes)]
     graph = build_graph(inventory).to_dict()
     metrics = graph.get("metrics", {})
     threshold = _SEVERITY_ORDER[args.fail_on]
@@ -291,3 +323,109 @@ def _print_diff(diff: dict) -> None:
         print(f"  UP  {str(finding['severity']).upper():8} {finding['code']:24} was {finding['previous_severity']}")
     for reason in diff["reasons"]:
         print(f"reason: {_safe(reason)}")
+
+
+# --------------------------------------------------------------------------- image scan
+def cmd_image_scan(args: Any) -> int:
+    try:
+        _require_engine()
+    except EngineUnavailable as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    from app import __version__
+    from app.containers.image import MAX_IMAGE_BYTES
+    from app.containers.service import scan_image
+
+    archive = Path(args.archive)
+    try:
+        size = archive.stat().st_size
+        if size > MAX_IMAGE_BYTES:
+            print(f"error: image archive larger than {MAX_IMAGE_BYTES} bytes", file=sys.stderr)
+            return EXIT_USAGE
+        data = archive.read_bytes()
+    except OSError as exc:
+        print(f"error: cannot read {_safe(args.archive)}: {type(exc).__name__}", file=sys.stderr)
+        return EXIT_USAGE
+
+    result = scan_image(data, archive.name, vulnerabilities=not args.no_vulnerabilities, offline=args.offline,
+                        tool_version=__version__)
+    if args.sbom_output:
+        Path(args.sbom_output).write_text(json.dumps(result.sbom, indent=2, sort_keys=True), encoding="utf-8")
+        print(f"wrote {args.sbom_output}", file=sys.stderr)
+
+    document = {**result.summary(), "vulnerability_scan": result.vulnerability_scan.to_dict(),
+                "components": [c.to_dict() for c in result.report.components],
+                "findings": [f.to_dict() for f in result.findings]}
+    if args.format == "sarif":
+        from app.reporting.sarif import build_sarif
+
+        name = result.report.image_refs[0] if result.report.image_refs else archive.name
+        _write_or_print(json.dumps(build_sarif(result.findings, tool_version=__version__,
+                                               automation_id=f"warden/image/{name}"), indent=2), args.output)
+    elif args.format == "json":
+        _write_or_print(json.dumps(document, indent=2, default=str), args.output)
+    else:
+        _print_image_table(document, result.findings)
+
+    threshold = _SEVERITY_ORDER[args.fail_on]
+    blocking = [f for f in result.findings if f.severity.rank >= threshold]
+    incomplete = not result.report.complete
+    if blocking or incomplete:
+        why = "image could not be analysed completely" if incomplete and not blocking else \
+            f"{len(blocking)} finding(s) at or above {args.fail_on}"
+        print(f"\nImage check FAILED: {why}", file=sys.stderr)
+        return EXIT_FAILED
+    return EXIT_OK
+
+
+def _print_image_table(document: dict, findings: list) -> None:
+    refs = document.get("image_refs") or ["(untagged)"]
+    print(f"WARDEN IMAGE SCAN  {_safe(refs[0])}")
+    print("-" * 60)
+    print(f"Decision      {str(document['decision']).upper()}  (risk {document['risk_score']})")
+    print(f"Digest        {_safe(document.get('config_digest') or '-')}")
+    print(f"Platform      {_safe(document.get('os') or '-')}/{_safe(document.get('architecture') or '-')}")
+    print(f"User          {_safe(document.get('user') or 'root (default)')}")
+    counts = document.get("component_counts") or {}
+    print(f"Packages      {', '.join(f'{k} {v}' for k, v in sorted(counts.items())) or 'none found'}")
+    scan = document["vulnerability_scan"]
+    print(f"Vulnerability scan  {scan['status']}" + (f" ({_safe(scan['detail'])})" if scan.get("detail") else ""))
+    print(f"Complete      {'yes' if document.get('complete') else 'NO'}")
+    print()
+    for finding in findings[:100]:
+        loc = finding.location.file if finding.location and finding.location.file else ""
+        print(f"{finding.severity.value.upper():8} {finding.code:26} {_safe(loc)[:40]:40} {_safe(finding.message)}")
+    for reason in document.get("reasons") or []:
+        print(f"reason: {_safe(reason)}")
+
+
+# --------------------------------------------------------------------------- report
+def cmd_report(args: Any) -> int:
+    try:
+        _require_engine()
+    except EngineUnavailable as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    from app import __version__
+    from app.reporting.documents import UnsupportedResult, load_result, render_html, render_markdown
+
+    try:
+        raw = Path(args.input).read_bytes() if args.input != "-" else sys.stdin.buffer.read()
+        if len(raw) > 64 * 1024 * 1024:
+            raise ValueError("input larger than 64 MiB")
+        loaded = load_result(json.loads(raw.decode("utf-8")))
+    except (OSError, ValueError, UnsupportedResult) as exc:
+        print(f"error: cannot build a report: {_safe(exc)}", file=sys.stderr)
+        return EXIT_USAGE
+
+    if args.format == "sarif":
+        from app.reporting.sarif import build_sarif
+
+        payload = json.dumps(build_sarif(loaded.findings, tool_version=__version__,
+                                         automation_id=f"warden/{loaded.kind}"), indent=2)
+    elif args.format == "html":
+        payload = render_html(loaded)
+    else:
+        payload = render_markdown(loaded)
+    _write_or_print(payload, args.output)
+    return EXIT_OK

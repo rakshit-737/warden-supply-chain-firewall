@@ -177,6 +177,23 @@ def build_parser() -> argparse.ArgumentParser:
     dp.add_argument("--fail-on-drift", action="store_true", help="exit 2 when the newer release escalated")
     dp.set_defaults(func=local.cmd_diff)
 
+    image = sub.add_parser("image", help="Container images").add_subparsers(dest="action", required=True)
+    isc = image.add_parser("scan", help="Analyse a docker-save / OCI image archive offline")
+    isc.add_argument("archive", help="path to the output of `docker save` (or an OCI layout tarball)")
+    isc.add_argument("--format", choices=["table", "json", "sarif"], default="table")
+    isc.add_argument("--output", "-o")
+    isc.add_argument("--sbom-output", help="also write a CycloneDX SBOM of the image packages")
+    isc.add_argument("--no-vulnerabilities", action="store_true", help="skip the Trivy vulnerability scan")
+    isc.add_argument("--offline", action="store_true", help="do not let Trivy update its database")
+    isc.add_argument("--fail-on", dest="fail_on", choices=["low", "medium", "high", "critical"], default="high")
+    isc.set_defaults(func=local.cmd_image_scan)
+
+    rp = sub.add_parser("report", help="Render a saved JSON result as Markdown, HTML or SARIF")
+    rp.add_argument("input", help="JSON from project scan, image scan, diff or the scans API ('-' for stdin)")
+    rp.add_argument("--format", choices=["markdown", "html", "sarif"], default="markdown")
+    rp.add_argument("--output", "-o")
+    rp.set_defaults(func=local.cmd_report)
+
     policy = sub.add_parser("policy", help="Policy-as-code").add_subparsers(dest="action", required=True)
     pv = policy.add_parser("validate", help="Validate a policy document (YAML or JSON)")
     pv.add_argument("file")
