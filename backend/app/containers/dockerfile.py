@@ -44,7 +44,9 @@ _PIPE_TO_SHELL_RE = re.compile(
     r"(?:/usr/bin/|/bin/)?(?:sh|bash|zsh|dash|ash|ksh|python[0-9.]*|perl|ruby|node)\b"
 )
 _URL_RE = re.compile(r"^https?://", re.IGNORECASE)
-_VARIABLE_RE = re.compile(r"\$(?:\{[^}]*\}|[A-Za-z_][A-Za-z0-9_]*)")
+# ${NAME} or $NAME. The brace body is bounded and cannot contain another "$", so unterminated input such
+# as "${{${{${{..." is scanned in linear time (CodeQL py/polynomial-redos).
+_VARIABLE_RE = re.compile(r"\$(?:\{[^}$]{0,256}\}|[A-Za-z_][A-Za-z0-9_]*)")
 # Variable names that hold a credential: the secret word ends the name (DB_PASSWORD, GITHUB_TOKEN),
 # so settings such as COOKIE_SAMESITE or TOKEN_TTL are not mistaken for secrets.
 _SECRET_NAME_RE = re.compile(

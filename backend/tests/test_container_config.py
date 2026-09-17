@@ -140,3 +140,13 @@ def test_wardens_own_container_files_are_clean():
     files = {p: (REPO / p).read_text(encoding="utf-8")
              for p in ("backend/Dockerfile", "frontend/Dockerfile", "docker-compose.yml")}
     assert lint_files(files) == []
+
+
+def test_hostile_variable_syntax_is_linear_time():
+    import time
+
+    hostile = "${{" * 20000
+    started = time.perf_counter()
+    lint_dockerfile(f"FROM {hostile}\nENV API_TOKEN={hostile}\nUSER app\n")
+    lint_compose(f"services:\n  a:\n    image: '{hostile}'\n    environment:\n      API_TOKEN: '{hostile}'\n")
+    assert time.perf_counter() - started < 2.0
