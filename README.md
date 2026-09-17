@@ -13,6 +13,7 @@
 [Threat Model](docs/THREAT_MODEL.md) ·
 [Data Model](docs/DATA_MODEL.md) ·
 [ML Model](docs/ML_MODEL.md) ·
+[Benchmark](docs/BENCHMARK.md) ·
 [API](docs/API.md)
 
 </div>
@@ -44,7 +45,7 @@ flowchart LR
   subgraph API["FastAPI backend"]
     direction TB
     ACQ["Acquisition<br/>PyPI metadata + artifact"] --> EXT["Safe extraction<br/>(hostile archives)"]
-    EXT --> AZ["13 analyzers in parallel"]
+    EXT --> AZ["14 analyzers in parallel"]
     AZ --> COR["Attack-chain correlation"]
     COR --> RISK["Risk engine<br/>(separate dimensions)"]
     RISK --> POL["Policy engine<br/>(policy-as-code)"]
@@ -64,8 +65,9 @@ guards, and analyses it **without ever executing package code**.
 |---|---|
 | `metadata` | release age, maintainer count, missing source repository, release floods, yanked releases |
 | `typosquat` | edit distance, Jaro-Winkler, keyboard adjacency, homoglyphs and Unicode confusables, combosquats — weighted by how popular the imitated package is (top 5000 real PyPI names) |
-| `static_code` | AST behaviour: network egress, process and shell execution, dynamic evaluation, credential environment and file access, with install-time / import-time / runtime context |
-| `install_script` | the highest-value vector: active code in `setup.py`, `cmdclass` hooks, in-tree PEP 517 build backends, executable `.pth` startup hooks, `sitecustomize`, console scripts that shadow real commands |
+| `static_code` | AST behaviour: network egress (including raw sockets), process and shell execution, reverse shells, dynamic evaluation (including names assembled from string pieces), credential environment and file access (including serialised environment dumps), with import aliases resolved |
+| `install_script` | the highest-value vector: active code in `setup.py` and `cmdclass` hooks, graded by what the script does (a compiler call is not a network call) |
+| `install_vectors` | the other ways code runs without an import: executable `.pth` start-up hooks, shipped `sitecustomize` / `usercustomize`, in-tree PEP 517 build backends, build requirements from direct URLs, console scripts that shadow `pip`, `python`, `git` and other commands |
 | `obfuscation` | high-entropy blobs, decode-then-execute chains, layered encodings, hex and compressed payloads, runtime string reconstruction — decoded under strict bounds, never executed |
 | `ioc` | indicators from a bundled snapshot (URLs, addresses, wallet strings, code fingerprints) |
 | `inventory` | prebuilt binaries in a source distribution, nested archives, suspicious file types, wheel contents that diverge from the sdist |
@@ -144,18 +146,40 @@ detected secret looked malicious. The fix was threefold: classify secrets found 
 path, add measured real-world negatives to training, and stop the model from creating a critical
 verdict the deterministic layer does not support.
 
+## Measured on a synthetic benchmark
+
+`python -m benchmark.run` puts 22 hand-written, inert packages (14 malicious, 4 of them evasive; 8
+benign look-alikes) through the real pipeline. Current result with the default policy: **13 / 14
+malicious detected, 1 / 8 benign warned (none blocked)**, the same with or without the optional YARA
+and Semgrep layers. The corpus is small and synthetic, so these numbers are a regression baseline, not
+a real-world detection rate; the miss and the false positive are explained in
+[docs/BENCHMARK.md](docs/BENCHMARK.md). Building the benchmark exposed and fixed five detection gaps
+and an ML over-escalation.
+
 ## What is implemented today
 
 - **Package scanning** end to end: acquisition, safe extraction, 13 analyzers, correlation, risk,
   policy, persistence, events and audit.
-- **REST API**: authentication with refresh-token rotation, scans, policies and policy validation,
-  exceptions workflow, events, audit with chain verification, users, system info, ML model and drift,
-  health, Prometheus metrics.
-- **Security console** (React + TypeScript): dashboard, scan history and detail (risk breakdown,
-  attack chains, findings with locations and mappings, vulnerabilities, provenance, analyzer runs),
-  new scan, policies, events, audit with integrity verification, exceptions workflow, users, system.
-- **SBOM engine** (CycloneDX 1.6 and SPDX 2.3) and a **dependency graph engine** with blast radius
-  and dominator metrics — both usable as libraries today.
+- **Project scanning**: manifests (requirements, `pyproject.toml`, lock files) parsed with line
+  provenance, dependency hygiene and dependency-confusion checks, Dockerfile and Compose linting, a
+  dependency graph with blast radius, CycloneDX 1.6 and SPDX 2.3 SBOMs — through the API, the console
+  and the CLI.
+- **Release diffs**: what changed in behaviour between two releases (risk, capabilities, findings,
+  files, maintainers), with drift events.
+- **Container images**: offline analysis of `docker save` / OCI archives (user, environment secrets,
+  Debian / Alpine / Python packages, credential files, set-uid binaries) plus an optional Trivy pass
+  that reports "not assessed" when Trivy is missing.
+- **Continuous monitoring**: a worker that checks watched packages for new releases, compares them
+  with the approved version and publishes events, with backoff on failures and a heartbeat for the
+  container healthcheck.
+- **REST API**: authentication with refresh-token rotation, scans, packages, projects, diffs,
+  containers, monitoring, vulnerabilities, policies and policy validation, exceptions workflow,
+  events, audit with chain verification, users, system info, ML model and drift, health, Prometheus
+  metrics.
+- **Security console** (React + TypeScript): dashboard, scans, packages, projects with components,
+  graph and SBOM export, release diffs, containers, monitoring, policies, events, audit with integrity
+  verification, exceptions workflow, users, system.
+- **Reports**: SARIF 2.1.0 (validated against the official schema), Markdown and self-contained HTML.
 - **Vulnerability intelligence**: OSV, CISA KEV, FIRST EPSS, optional NVD, with a spec-exact CVSS
   v3.x calculator.
 - **RBAC** with five roles, a **hash-chained audit log** with a verification endpoint, security
@@ -166,12 +190,11 @@ verdict the deterministic layer does not support.
 
 ## Not implemented yet (deliberately listed)
 
-- Project-level scanning API and the dependency-graph UI (the SBOM and graph engines exist; the HTTP
-  routes and pages are placeholders).
-- Release-to-release behavioural diffing, container image scanning, the continuous
-  monitoring worker, and the opt-in dynamic sandbox.
-- CLI `diff`, `image scan` and `report` commands.
+- The opt-in dynamic sandbox: designed in [docs/SANDBOX.md](docs/SANDBOX.md), not built, and the
+  setting that would switch it on is refused.
+- Transitive dependencies for project scans beyond what lock files record.
 - npm and other ecosystems.
+- A Marketplace release of the GitHub Action (it works from this repository today).
 
 ## Quick start
 
@@ -218,7 +241,12 @@ python -m cli.warden_cli project scan . --fail-on high            # manifest hyg
 python -m cli.warden_cli project scan . --format sarif -o warden.sarif
 python -m cli.warden_cli sbom generate . --format cyclonedx -o bom.json   # honours SOURCE_DATE_EPOCH
 python -m cli.warden_cli policy validate ../policies/production.yaml
+python -m cli.warden_cli diff requests 2.32.3 2.33.0 --fail-on-drift     # downloads both releases
+python -m cli.warden_cli image scan image.tar --sbom-output image-bom.json # output of `docker save`
+python -m cli.warden_cli report result.json --format html -o report.html  # from any --format json output
 ```
+
+`project scan` also lints Dockerfiles and Compose files it finds under the project.
 
 The SARIF output is validated against the official SARIF 2.1.0 schema in the test suite and can be
 uploaded with `github/codeql-action/upload-sarif`; results point at the manifest file and, when
