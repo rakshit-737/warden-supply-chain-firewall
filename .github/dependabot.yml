@@ -22,6 +22,8 @@
 #       with (python-version in the workflows), so both move together
 #     * nginx-unprivileged minor versions: odd minors (1.31) are nginx mainline, the frontend image
 #       follows the stable line (see frontend/Dockerfile)
+#     * typescript major versions: typescript-eslint declares the TypeScript range it supports;
+#       move TypeScript once that range includes the new major
 #     * postgres major versions: an existing data volume does not start under a new major version
 #       without pg_upgrade or a dump and restore
 # - The pinned third-party Compose images are scanned for known vulnerabilities by the
@@ -62,6 +64,10 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
 
   - package-ecosystem: github-actions
     directory: /
