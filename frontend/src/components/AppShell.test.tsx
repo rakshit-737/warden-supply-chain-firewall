@@ -34,7 +34,7 @@ describe("AppShell", () => {
     for (const heading of ["Overview", "Supply chain", "Operations", "Governance"]) {
       expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
     }
-    for (const link of ["Dashboard", "Packages", "Projects", "Dependency graph", "Release diffs", "Containers", "Events", "Monitoring", "Policies", "Exceptions", "Audit", "System"]) {
+    for (const link of ["Dashboard", "Packages", "Projects", "Release diffs", "Containers", "Events", "Monitoring", "Policies", "Exceptions", "Audit", "System"]) {
       expect(screen.getByRole("link", { name: link })).toBeInTheDocument();
     }
     expect(screen.getByRole("link", { name: "Scans" })).toHaveAttribute("aria-current", "page");

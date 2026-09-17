@@ -19,5 +19,14 @@ export async function preloadRoutes(): Promise<void> {
     import("../pages/Exceptions"),
     import("../pages/Users"),
     import("../pages/System"),
+    import("../pages/Packages"),
+    import("../pages/Projects"),
+    import("../pages/ProjectDetail"),
+    import("../pages/ProjectScanDetail"),
+    import("../pages/Diffs"),
+    import("../pages/DiffDetail"),
+    import("../pages/Containers"),
+    import("../pages/ContainerDetail"),
+    import("../pages/Monitoring"),
   ]);
 }

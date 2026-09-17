@@ -1,7 +1,6 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router";
 import type { ApiError } from "./api/client";
-import { PLANNED_SECTIONS } from "./app/navigation";
 import { useAuth } from "./auth/useAuth";
 import { AppShell } from "./components/AppShell";
 import { BrandMark } from "./components/BrandMark";
@@ -12,16 +11,24 @@ import { LoadingBlock } from "./components/Skeleton";
 
 // Route-level code splitting: each page is its own chunk, fetched on first visit.
 const Audit = lazy(() => import("./pages/Audit"));
+const ContainerDetail = lazy(() => import("./pages/ContainerDetail"));
+const Containers = lazy(() => import("./pages/Containers"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
+const DiffDetail = lazy(() => import("./pages/DiffDetail"));
+const Diffs = lazy(() => import("./pages/Diffs"));
 const Events = lazy(() => import("./pages/Events"));
 const Exceptions = lazy(() => import("./pages/Exceptions"));
 const Login = lazy(() => import("./pages/Login"));
+const Monitoring = lazy(() => import("./pages/Monitoring"));
 const NewScan = lazy(() => import("./pages/NewScan"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const Packages = lazy(() => import("./pages/Packages"));
 const Policies = lazy(() => import("./pages/Policies"));
+const ProjectDetail = lazy(() => import("./pages/ProjectDetail"));
+const ProjectScanDetail = lazy(() => import("./pages/ProjectScanDetail"));
+const Projects = lazy(() => import("./pages/Projects"));
 const ScanDetail = lazy(() => import("./pages/ScanDetail"));
 const Scans = lazy(() => import("./pages/Scans"));
-const SectionUnavailable = lazy(() => import("./pages/SectionUnavailable"));
 const SystemPage = lazy(() => import("./pages/System"));
 const Users = lazy(() => import("./pages/Users"));
 
@@ -95,17 +102,17 @@ export default function App() {
         {/* Both pages check their permission themselves (event:read, audit:read). */}
         <Route path="events" element={<Events />} />
         <Route path="audit" element={<Audit />} />
-        {PLANNED_SECTIONS.map((section) => (
-          <Route
-            key={section.path}
-            path={section.path}
-            element={
-              <RequirePermission permission={section.permission}>
-                <SectionUnavailable title={section.title} summary={section.summary} />
-              </RequirePermission>
-            }
-          />
-        ))}
+        {/* Supply-chain views check their own permission (scan:read, project:read, monitor:read). */}
+        <Route path="packages" element={<Packages />} />
+        <Route path="projects" element={<Projects />} />
+        <Route path="projects/:id" element={<ProjectDetail />} />
+        <Route path="projects/:id/scans/:scanId" element={<ProjectScanDetail />} />
+        <Route path="graph" element={<Navigate to="/projects" replace />} />
+        <Route path="diffs" element={<Diffs />} />
+        <Route path="diffs/:id" element={<DiffDetail />} />
+        <Route path="containers" element={<Containers />} />
+        <Route path="containers/:id" element={<ContainerDetail />} />
+        <Route path="monitoring" element={<Monitoring />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
