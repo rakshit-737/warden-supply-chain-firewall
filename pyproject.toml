@@ -77,10 +77,10 @@ server = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/rakshit-737/warden-supply-chain-firewall"
-Repository = "https://github.com/rakshit-737/warden-supply-chain-firewall"
-Documentation = "https://github.com/rakshit-737/warden-supply-chain-firewall/tree/main/docs"
-Issues = "https://github.com/rakshit-737/warden-supply-chain-firewall/issues"
+Homepage = "https://github.com/rakshit-737/warden-supply-chain-security"
+Repository = "https://github.com/rakshit-737/warden-supply-chain-security"
+Documentation = "https://github.com/rakshit-737/warden-supply-chain-security/tree/main/docs"
+Issues = "https://github.com/rakshit-737/warden-supply-chain-security/issues"
 
 [project.scripts]
 warden = "cli.warden_cli:main"

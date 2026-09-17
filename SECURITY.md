@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please report suspected vulnerabilities privately through a
-[GitHub security advisory](https://github.com/rakshit-737/warden-supply-chain-firewall/security/advisories/new)
+[GitHub security advisory](https://github.com/rakshit-737/warden-supply-chain-security/security/advisories/new)
 rather than a public issue. Include reproduction steps and the impact you expect. You should receive
 an acknowledgement within a few days.
 

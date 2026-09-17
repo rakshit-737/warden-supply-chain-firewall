@@ -6,7 +6,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/warden-supply-chain-firewall.svg)](https://pypi.org/project/warden-supply-chain-firewall/)
 [![Python](https://img.shields.io/pypi/pyversions/warden-supply-chain-firewall.svg)](https://pypi.org/project/warden-supply-chain-firewall/)
-[![CI](https://github.com/rakshit-737/warden-supply-chain-firewall/actions/workflows/ci.yml/badge.svg)](https://github.com/rakshit-737/warden-supply-chain-firewall/actions/workflows/ci.yml)
+[![CI](https://github.com/rakshit-737/warden-supply-chain-security/actions/workflows/ci.yml/badge.svg)](https://github.com/rakshit-737/warden-supply-chain-security/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
 [Architecture](docs/ARCHITECTURE.md) ·
@@ -230,7 +230,7 @@ before enforcing the gate, so a failing build still shows its alerts; the job ne
 `security-events: write`:
 
 ```yaml
-- uses: rakshit-737/warden-supply-chain-firewall@<commit-sha>
+- uses: rakshit-737/warden-supply-chain-security@<commit-sha>
   with:
     path: .
     fail-on: high

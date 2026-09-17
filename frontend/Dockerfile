@@ -27,7 +27,7 @@ FROM nginxinc/nginx-unprivileged:1.30.4-alpine3.24@sha256:adf5042a17f4ecdd200c59
 
 LABEL org.opencontainers.image.title="warden-x-web" \
       org.opencontainers.image.description="Warden X security dashboard (static SPA and API reverse proxy)" \
-      org.opencontainers.image.source="https://github.com/rakshit-737/warden-supply-chain-firewall" \
+      org.opencontainers.image.source="https://github.com/rakshit-737/warden-supply-chain-security" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.base.name="docker.io/nginxinc/nginx-unprivileged:1.30.4-alpine3.24" \
       org.opencontainers.image.base.digest="sha256:adf5042a17f4ecdd200c595fa9ffd1be37efb18f89a830bd1a00e4ab4d59d42c"

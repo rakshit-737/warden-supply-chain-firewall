@@ -52,7 +52,7 @@ FROM python:3.12.14-slim-trixie@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c
 
 LABEL org.opencontainers.image.title="warden-x-api" \
       org.opencontainers.image.description="Warden X software supply-chain security API" \
-      org.opencontainers.image.source="https://github.com/rakshit-737/warden-supply-chain-firewall" \
+      org.opencontainers.image.source="https://github.com/rakshit-737/warden-supply-chain-security" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.base.name="docker.io/library/python:3.12.14-slim-trixie" \
       org.opencontainers.image.base.digest="sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea"

@@ -15,7 +15,7 @@
 #   steps:
 #     - uses: actions/checkout@<sha>
 #       with: { persist-credentials: false }
-#     - uses: rakshit-737/warden-supply-chain-firewall@<sha>
+#     - uses: rakshit-737/warden-supply-chain-security@<sha>
 #       with:
 #         path: .
 #         fail-on: high

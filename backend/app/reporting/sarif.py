@@ -27,7 +27,7 @@ from app.core.redaction import sanitize_text
 SARIF_SCHEMA = "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json"
 SARIF_VERSION = "2.1.0"
 TOOL_NAME = "Warden X"
-INFORMATION_URI = "https://github.com/rakshit-737/warden-supply-chain-firewall"
+INFORMATION_URI = "https://github.com/rakshit-737/warden-supply-chain-security"
 SRCROOT = "%SRCROOT%"
 FINGERPRINT_KEY = "wardenFindingId/v1"
 

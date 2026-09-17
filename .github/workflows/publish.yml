@@ -59,7 +59,7 @@
 #         https://ghcr.io/v2/pypa/gh-action-pypi-publish/manifests/<action commit SHA> | grep -i docker-content-digest
 #     When Dependabot bumps the action, re-resolve, review and update REVIEWED_DIGEST in the publish job.
 #   - Verify a downloaded artifact against this workflow's provenance with:
-#       gh attestation verify <file> --repo rakshit-737/warden-supply-chain-firewall
+#       gh attestation verify <file> --repo rakshit-737/warden-supply-chain-security
 #     An attestation proves which workflow and commit built a file, not that the commit was reviewed.
 
 name: Publish to PyPI
