@@ -181,8 +181,9 @@ describe("Exception request form", () => {
     const notice = await screen.findByText(/Requested an exception for internal-mirror-client/);
     await waitFor(() => expect(notice).toHaveFocus());
     expect(screen.queryByRole("region", { name: "Request a policy exception" })).toBeNull();
-    expect(screen.getByRole("tab", { name: "Pending" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("button", { name: "Withdraw request" })).toBeInTheDocument();
+    // React 19 may commit the tab switch after the focus move; wait for the settled view.
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Pending" })).toHaveAttribute("aria-selected", "true"));
+    expect(await screen.findByRole("button", { name: "Withdraw request" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   }, 20_000);
 
