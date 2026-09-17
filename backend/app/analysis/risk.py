@@ -113,7 +113,8 @@ VULNERABILITY_ANALYZER_NAMES = frozenset({"vulnerability"})
 # "examined, nothing found" rather than "unknown").
 DIMENSION_ANALYZERS: dict[str, frozenset[str]] = {
     Dimension.BEHAVIORAL: frozenset({
-        "static_code", "install_script", "obfuscation", "typosquat", "ioc", "yara_scan", "semgrep_scan",
+        "static_code", "install_script", "install_vectors", "obfuscation", "typosquat", "ioc", "yara_scan",
+        "semgrep_scan",
     }),
     Dimension.REPUTATION: frozenset({"metadata"}),
     Dimension.PROVENANCE: frozenset({"provenance"}),

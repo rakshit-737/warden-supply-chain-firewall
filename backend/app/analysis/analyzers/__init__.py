@@ -24,6 +24,7 @@ from collections.abc import Iterable
 from app.analysis.analyzers.base import Analyzer, BaseAnalyzer, PackageContext
 from app.analysis.analyzers.dependency_confusion import DependencyConfusionAnalyzer
 from app.analysis.analyzers.install_script import InstallScriptAnalyzer
+from app.analysis.analyzers.install_vectors import InstallVectorsAnalyzer
 from app.analysis.analyzers.inventory import InventoryAnalyzer
 from app.analysis.analyzers.ioc import IOCAnalyzer
 from app.analysis.analyzers.metadata import MetadataAnalyzer
@@ -51,6 +52,7 @@ ALL_ANALYZERS: list[Analyzer] = [
     # Warden X analyzers. Names must match app.analysis.risk.DIMENSION_ANALYZERS /
     # VULNERABILITY_ANALYZER_NAMES so their dimensions read as "examined" when they ran.
     InventoryAnalyzer(),
+    InstallVectorsAnalyzer(),
     SecretsAnalyzer(),
     DependencyConfusionAnalyzer(),
     ProvenanceAnalyzer(),
