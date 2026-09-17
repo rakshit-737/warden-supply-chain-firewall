@@ -49,9 +49,9 @@ Uploads cross the same kind of boundary: manifest files submitted for a project 
 image archives are hostile input too. Image archives are the one large body the API accepts; the
 route checks authorisation before reading it, caps it (`MAX_IMAGE_UPLOAD_BYTES`, and the same limit in
 nginx), analyses it in memory with the package extraction guards (every layer included) and runs one
-image scan at a time. The monitoring worker is a separate process with the API's database access and
-outbound access only to the intelligence and registry hosts; it claims work with a lease so that
-several workers never check the same package concurrently.
+image scan at a time. The monitoring worker is a separate process with the API's database access; its outbound HTTP
+goes through the same host allow-list as the API (registry and intelligence hosts only), and it
+claims work with a lease so that several workers never check the same package concurrently.
 
 ## 3. STRIDE
 
