@@ -17,6 +17,13 @@
 #     * the hash-pinned build tooling in publish.yml
 #     * the reviewed gh-action-pypi-publish image digest in publish.yml (see its header)
 #     * pre-commit hook revs (`pre-commit autoupdate --freeze`)
+# - Ignored on purpose (take them by hand, as a reviewed change):
+#     * python minor versions (3.12 -> 3.13): the runtime image must match the interpreter CI tests
+#       with (python-version in the workflows), so both move together
+#     * nginx-unprivileged minor versions: odd minors (1.31) are nginx mainline, the frontend image
+#       follows the stable line (see frontend/Dockerfile)
+#     * postgres major versions: an existing data volume does not start under a new major version
+#       without pg_upgrade or a dump and restore
 # - The pinned third-party Compose images are scanned for known vulnerabilities by the
 #   trivy-compose-images job in security.yml.
 version: 2
@@ -91,6 +98,15 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      - dependency-name: python
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: nginxinc/nginx-unprivileged
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
 
   # docker-compose.yml: postgres, redis, prometheus and grafana. The `docker` ecosystem above does not
   # read Compose files.
@@ -110,3 +126,7 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      - dependency-name: postgres
+        update-types:
+          - version-update:semver-major
