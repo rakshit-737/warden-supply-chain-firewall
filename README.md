@@ -170,7 +170,7 @@ verdict the deterministic layer does not support.
   routes and pages are placeholders).
 - Release-to-release behavioural diffing, container image scanning, the continuous
   monitoring worker, and the opt-in dynamic sandbox.
-- CLI `diff`, `image scan` and `report` commands, and a packaged GitHub Action.
+- CLI `diff`, `image scan` and `report` commands.
 - npm and other ecosystems.
 
 ## Quick start
@@ -224,6 +224,17 @@ The SARIF output is validated against the official SARIF 2.1.0 schema in the tes
 uploaded with `github/codeql-action/upload-sarif`; results point at the manifest file and, when
 known, the line that declared the dependency. Findings stay stable across runs through a
 fingerprint derived from the finding id.
+
+In a workflow, the repository doubles as a GitHub Action (`action.yml`). It uploads the SARIF report
+before enforcing the gate, so a failing build still shows its alerts; the job needs
+`security-events: write`:
+
+```yaml
+- uses: rakshit-737/warden-supply-chain-firewall@<commit-sha>
+  with:
+    path: .
+    fail-on: high
+```
 
 Exit codes: `0` allowed or passed, `2` something was blocked or failed the check, `3` usage or
 transport error.
