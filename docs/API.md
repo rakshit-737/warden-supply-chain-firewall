@@ -98,8 +98,63 @@ that schema and kept in step with it.
 | GET | `/health/ready` | public | Database and cache checks; the model is optional, so a missing model is degraded, not unready. |
 | GET | `/metrics` | optional bearer | Prometheus exposition; requires `METRICS_TOKEN` when configured. Labels are bounded and never contain package names. |
 
-## Not implemented yet
+## Packages and vulnerabilities
 
-`/packages`, `/projects`, `/diffs`, `/containers`, `/monitoring` and `/vulnerabilities` are
-registered but carry no routes yet. Their engines exist as libraries (SBOM, dependency graph,
-intelligence); the HTTP surface is the next phase, and the console links to them as placeholders.
+| Method | Path | Permission | Notes |
+|---|---|---|---|
+| GET | `/packages/{ecosystem}/{name}` | `scan:read` | Everything stored about one package (PEP 503 name matching): verdicts per version and environment, advisories found in them, monitoring state and release diffs. Database only; 404 when Warden has no data. |
+| GET | `/vulnerabilities` | `vuln:read` | Advisories found in stored verdicts, aggregated by id with the affected package versions. Filters `kev`, `min_severity`. |
+| GET | `/vulnerabilities/lookup` | `vuln:read` | Live lookup for `name` + `version` (OSV, CISA KEV, FIRST EPSS, optional NVD). The response always carries `status`; `unavailable` or `partial` means "not known", never "no vulnerabilities". Results are cached. |
+| GET | `/vulnerabilities/{vuln_id}` | `vuln:read` | One advisory from the local cache (populated by lookups). |
+
+## Projects
+
+| Method | Path | Permission | Notes |
+|---|---|---|---|
+| POST | `/projects` | `project:write` | `{name, description?}`; names are unique (409). |
+| GET | `/projects` | `project:read` | Paginated list. |
+| GET | `/projects/{project_id}` | `project:read` | One project. |
+| POST | `/projects/{project_id}/scans` | `project:write` | `{files: {path: text}, environment?}` — at most 50 files, 1 MB each, 5 MB in total. Manifests are parsed (requirements, `pyproject.toml`, lock files) and Dockerfiles / Compose files are linted; nothing is fetched or run. Produces hygiene, dependency-confusion and container-configuration findings, a dependency graph, a CycloneDX SBOM, and components enriched with the newest stored verdict for the same name, version and environment. |
+| GET | `/projects/{project_id}/scans` | `project:read` | Scan history. |
+| GET | `/projects/{project_id}/scans/{scan_id}` | `project:read` | Decision, risk, manifests, findings, parser warnings. |
+| GET | `/projects/{project_id}/scans/{scan_id}/components` | `project:read` | Paginated components; `direct` filter. |
+| GET | `/projects/{project_id}/scans/{scan_id}/graph` | `project:read` | Nodes, edges and metrics (depth, blast radius, single points of failure). |
+| GET | `/projects/{project_id}/scans/{scan_id}/sbom` | `project:read` | `format=cyclonedx` (stored) or `spdx` (rebuilt from the stored components). Publishes `sbom_generated`. |
+
+A project scan's decision is `block` for a high or critical finding, `warn` for a medium one,
+otherwise `allow`, raised to the worst stored component decision.
+
+## Release diffs
+
+| Method | Path | Permission | Notes |
+|---|---|---|---|
+| POST | `/diffs` | `diff:create` | `{name, from_version, to_version}`. Analyses both releases and compares risk, dimensions, capabilities, findings (by code and file), the file inventory (added, removed, changed, new executables, install-time files) and declared maintainers. An `escalated` result publishes `behavior_drift_detected`; new maintainers publish `maintainer_changed`. One stored row per package, version pair and analyzer version. |
+| GET | `/diffs` | `scan:read` | Paginated; filters `package`, `drift_only`. |
+| GET | `/diffs/{diff_id}` | `scan:read` | Summary and the findings that are new in the newer release. |
+
+## Containers
+
+| Method | Path | Permission | Notes |
+|---|---|---|---|
+| POST | `/containers/scans` | `container:scan` | Raw `application/octet-stream` body: a `docker save` or OCI layout tarball, at most `MAX_IMAGE_UPLOAD_BYTES` (256 MiB) — the only route with a larger body limit. Query `image_ref` (label), `vulnerabilities` (run Trivy when installed). Authorisation is checked before the body is read; scans run one at a time. The image is analysed in memory and never run: configured user, environment secrets, installed Debian / Alpine / Python packages after whiteouts, credential formats in files, set-uid executables. An archive that cannot be read completely is stored as `incomplete` and never looks clean; vulnerabilities that were not assessed make the decision at least `warn`. |
+| GET | `/containers/scans` | `scan:read` | Paginated list. |
+| GET | `/containers/scans/{scan_id}` | `scan:read` | Summary, tool status and findings. |
+| GET | `/containers/scans/{scan_id}/sbom` | `scan:read` | CycloneDX document of the image packages. |
+
+## Monitoring
+
+| Method | Path | Permission | Notes |
+|---|---|---|---|
+| POST | `/monitoring/packages` | `monitor:write` | `{name, approved_version?, poll_interval_seconds? (300–604800), project_id?}`; 409 for a duplicate. |
+| GET | `/monitoring/packages` | `monitor:read` | Paginated; `failing` filter. |
+| GET | `/monitoring/packages/{package_id}` | `monitor:read` | One watched package with its snapshot. |
+| PATCH | `/monitoring/packages/{package_id}` | `monitor:write` | `enabled`, `approved_version`, `poll_interval_seconds`. |
+| DELETE | `/monitoring/packages/{package_id}` | `monitor:write` | Stops watching. |
+| POST | `/monitoring/packages/{package_id}/check` | `monitor:write` | Runs one check now: `baseline`, `unchanged`, `new_release` (with `diff_id`) or `error`. |
+
+Checks normally run in the monitoring worker (`python -m app.workers.monitor`, Compose profile
+`worker`). A new release is compared with the approved version, or the last one seen, and publishes
+`new_release_detected` plus drift, risk and maintainer events. Failed checks back off exponentially
+and publish `monitor_error` on the first failure and every fifth.
+
+All write actions above are recorded in the audit chain.
