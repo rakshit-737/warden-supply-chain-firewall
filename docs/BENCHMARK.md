@@ -31,7 +31,9 @@ rate rises above 0.125, or any of the listed hard benign samples is blocked.
 
 ## Results
 
-Recorded in `backend/benchmark/results/latest.json` (benchmark version 1.0.0, default policy):
+Recorded in `backend/benchmark/results/latest.json` (benchmark version 1.0.0, default policy, with
+YARA available). The report lists which optional tools were available; the same totals were measured
+with YARA and Semgrep both unavailable, which is how CI runs it:
 
 | | |
 |---|---|
@@ -48,7 +50,7 @@ Recorded in `backend/benchmark/results/latest.json` (benchmark version 1.0.0, de
 | `.pth` hook running an encoded payload | detect | block | 100 | PTH_STARTUP_HOOK, YARA_MATCH |
 | in-tree PEP 517 backend piping curl to sh | detect | block | 85 | BUILD_BACKEND_HOOK, YARA_MATCH |
 | console script named `pip` | detect | block | 40 | ENTRYPOINT_SHADOWING |
-| reverse shell | detect | block | 80 | NETWORK_EGRESS, SUBPROCESS_EXEC, YARA_MATCH |
+| reverse shell | detect | block | 100 | REVERSE_SHELL, NETWORK_EGRESS, YARA_MATCH |
 | install-time download and execute | detect | block | 100 | ATTACK_CHAIN |
 | typosquat of `requests` | detect | warn | 47 | TYPOSQUAT, NETWORK_EGRESS |
 | evasive: `getattr(__builtins__, 'ex' + 'ec')` | detect | block | 99 | ATTACK_CHAIN, DYNAMIC_EXEC |
@@ -87,7 +89,9 @@ Building it exposed real problems, all fixed in the same change set:
   with confidence ≥ 0.7 supports it (`app/analysis/scoring.py`).
 * The static analyzer did not recognise a serialised dump of the whole environment
   (`json.dumps(dict(os.environ))`, credential-filtered comprehensions), import aliases
-  (`import os as _o`), socket connection calls, or `getattr` names assembled from string pieces.
+  (`import os as _o`), socket connection calls, `getattr` names assembled from string pieces, or a
+  socket wired to a process's standard streams (the reverse-shell sample was caught only by YARA,
+  so it was missed wherever YARA is not installed; `REVERSE_SHELL` now covers it).
 
 ## Limits
 

@@ -93,8 +93,16 @@ def summarize(results: list[SampleResult]) -> dict[str, Any]:
     def rate(part: list[SampleResult]) -> float | None:
         return round(sum(r.correct for r in part) / len(part), 3) if part else None
 
+    from app.analysis.analyzers import all_analyzers
+
+    tools = {}
+    for analyzer in all_analyzers():
+        status = analyzer.availability() if hasattr(analyzer, "availability") else None
+        if status is not None and analyzer.name in ("yara_scan", "semgrep_scan"):
+            tools[analyzer.name] = bool(status.available)
     return {
         "benchmark_version": VERSION,
+        "optional_tools": tools,
         "samples": len(results),
         "malicious": len(malicious),
         "benign": len(benign),
@@ -131,6 +139,7 @@ def main(argv: list[str] | None = None) -> int:
     report = summarize([run_sample(sample, policy) for sample in SAMPLES])
     if args.output:
         Path(args.output).write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    print(f"optional tools: {report['optional_tools']}")
     print(f"samples {report['samples']}  detection {report['detection_rate']}  "
           f"evasive {report['evasive_detection_rate']}  false positives {report['false_positive_rate']}")
     for row in report["results"]:

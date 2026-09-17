@@ -1,5 +1,9 @@
 {
   "benchmark_version": "1.0.0",
+  "optional_tools": {
+    "yara_scan": true,
+    "semgrep_scan": false
+  },
   "samples": 22,
   "malicious": 14,
   "benign": 8,
@@ -99,7 +103,7 @@
         "INSTALL_HOOK_EXEC",
         "NETWORK_EGRESS"
       ],
-      "duration_ms": 7469,
+      "duration_ms": 6343,
       "correct": true
     },
     {
@@ -118,7 +122,7 @@
         "OBFUSCATION",
         "YARA_MATCH"
       ],
-      "duration_ms": 389,
+      "duration_ms": 281,
       "correct": true
     },
     {
@@ -133,7 +137,7 @@
         "ENV_HARVEST",
         "NETWORK_EGRESS"
       ],
-      "duration_ms": 280,
+      "duration_ms": 375,
       "correct": true
     },
     {
@@ -149,7 +153,7 @@
         "FS_SENSITIVE",
         "NETWORK_EGRESS"
       ],
-      "duration_ms": 329,
+      "duration_ms": 234,
       "correct": false
     },
     {
@@ -164,7 +168,7 @@
         "PTH_STARTUP_HOOK",
         "YARA_MATCH"
       ],
-      "duration_ms": 265,
+      "duration_ms": 234,
       "correct": true
     },
     {
@@ -181,7 +185,7 @@
         "SUBPROCESS_EXEC",
         "YARA_MATCH"
       ],
-      "duration_ms": 531,
+      "duration_ms": 296,
       "correct": true
     },
     {
@@ -197,7 +201,7 @@
         "ENTRYPOINT_SHADOWING",
         "SUBPROCESS_EXEC"
       ],
-      "duration_ms": 327,
+      "duration_ms": 219,
       "correct": true
     },
     {
@@ -206,15 +210,16 @@
       "technique": "reverse_shell",
       "evasive": false,
       "decision": "block",
-      "risk_score": 80,
+      "risk_score": 100,
       "severity": "critical",
       "codes": [
         "DANGEROUS_IMPORT",
         "NETWORK_EGRESS",
+        "REVERSE_SHELL",
         "SUBPROCESS_EXEC",
         "YARA_MATCH"
       ],
-      "duration_ms": 297,
+      "duration_ms": 265,
       "correct": true
     },
     {
@@ -231,7 +236,7 @@
         "NETWORK_EGRESS",
         "SUBPROCESS_EXEC"
       ],
-      "duration_ms": 343,
+      "duration_ms": 250,
       "correct": true
     },
     {
@@ -246,7 +251,7 @@
         "NETWORK_EGRESS",
         "TYPOSQUAT"
       ],
-      "duration_ms": 264,
+      "duration_ms": 234,
       "correct": true
     },
     {
@@ -262,7 +267,7 @@
         "DYNAMIC_EXEC",
         "OBFUSCATION"
       ],
-      "duration_ms": 594,
+      "duration_ms": 296,
       "correct": true
     },
     {
@@ -276,7 +281,7 @@
       "codes": [
         "INSTALL_HOOK_EXEC"
       ],
-      "duration_ms": 280,
+      "duration_ms": 234,
       "correct": true
     },
     {
@@ -292,7 +297,7 @@
         "INSTALL_HOOK_EXEC",
         "YARA_MATCH"
       ],
-      "duration_ms": 329,
+      "duration_ms": 250,
       "correct": true
     },
     {
@@ -307,7 +312,7 @@
         "ENV_HARVEST",
         "NETWORK_EGRESS"
       ],
-      "duration_ms": 295,
+      "duration_ms": 250,
       "correct": true
     },
     {
@@ -319,7 +324,7 @@
       "risk_score": 0,
       "severity": "info",
       "codes": [],
-      "duration_ms": 282,
+      "duration_ms": 250,
       "correct": true
     },
     {
@@ -335,7 +340,7 @@
         "INSTALL_HOOK_EXEC",
         "SUBPROCESS_EXEC"
       ],
-      "duration_ms": 280,
+      "duration_ms": 250,
       "correct": false
     },
     {
@@ -349,7 +354,7 @@
       "codes": [
         "PTH_STARTUP_HOOK"
       ],
-      "duration_ms": 328,
+      "duration_ms": 250,
       "correct": true
     },
     {
@@ -363,7 +368,7 @@
       "codes": [
         "NETWORK_EGRESS"
       ],
-      "duration_ms": 343,
+      "duration_ms": 219,
       "correct": true
     },
     {
@@ -377,7 +382,7 @@
       "codes": [
         "OBFUSCATION"
       ],
-      "duration_ms": 297,
+      "duration_ms": 234,
       "correct": true
     },
     {
@@ -389,7 +394,7 @@
       "risk_score": 0,
       "severity": "info",
       "codes": [],
-      "duration_ms": 360,
+      "duration_ms": 265,
       "correct": true
     },
     {
@@ -401,7 +406,7 @@
       "risk_score": 0,
       "severity": "info",
       "codes": [],
-      "duration_ms": 296,
+      "duration_ms": 203,
       "correct": true
     },
     {
@@ -416,7 +421,7 @@
         "DANGEROUS_IMPORT",
         "SUBPROCESS_EXEC"
       ],
-      "duration_ms": 328,
+      "duration_ms": 250,
       "correct": true
     }
   ],
