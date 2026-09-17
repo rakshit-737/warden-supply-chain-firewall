@@ -213,3 +213,81 @@ def _print_project_table(inventory: Any, findings: list, metrics: dict, notes: l
         print(f"{finding.severity.value.upper():8} {finding.code:24} {_safe(where):30} {_safe(finding.message)}")
     for warning in [*notes, *inventory.warnings][:10]:
         print(f"warning: {_safe(warning)}", file=sys.stderr)
+
+
+# --------------------------------------------------------------------------- diff
+def _default_orchestrator() -> Any:
+    from app.analysis.orchestrator import Orchestrator
+
+    return Orchestrator()
+
+
+# Replaced in tests; the real orchestrator downloads both releases from the registry.
+orchestrator_factory: Callable[[], Any] = _default_orchestrator
+
+
+def cmd_diff(args: Any) -> int:
+    try:
+        _require_engine()
+    except EngineUnavailable as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    from pydantic import ValidationError
+
+    from app.analysis.diff import diff_results
+    from app.schemas.diff import DiffRequest
+
+    try:
+        request = DiffRequest(name=args.package, from_version=args.from_version, to_version=args.to_version)
+    except ValidationError as exc:
+        print(f"error: {_safe(exc.errors()[0].get('msg', 'invalid request'))}", file=sys.stderr)
+        return EXIT_USAGE
+
+    orchestrator = orchestrator_factory()
+    old = orchestrator.analyze(request.ecosystem, request.name, request.from_version)
+    new = orchestrator.analyze(request.ecosystem, request.name, request.to_version)
+    diff = diff_results(old, new)
+
+    if args.format == "json":
+        print(json.dumps(diff, indent=2, default=str))
+    else:
+        _print_diff(diff)
+    if args.fail_on_drift and diff["verdict"] == "escalated":
+        print("\nRelease diff FAILED: behaviour escalated", file=sys.stderr)
+        return EXIT_FAILED
+    return EXIT_OK
+
+
+def _print_diff(diff: dict) -> None:
+    risk = diff["risk"]
+    print(f"WARDEN RELEASE DIFF  {_safe(diff['name'])}  {_safe(diff['from_version'])} -> {_safe(diff['to_version'])}")
+    print("-" * 60)
+    print(f"Verdict       {diff['verdict'].upper()}")
+    print(f"Risk          {risk['from']} ({risk['from_severity']}) -> {risk['to']} ({risk['to_severity']})"
+          f"  delta {risk['delta']:+d}")
+    for name, change in risk["dimensions"].items():
+        print(f"  {name:12} {change['from']} -> {change['to']}")
+    caps = diff["capabilities"]
+    if caps["added"] or caps["removed"]:
+        print(f"Capabilities  +{', +'.join(caps['added']) or '-'}  -{', -'.join(caps['removed']) or '-'}")
+    files = diff["files"]
+    if files.get("available"):
+        print(f"Files         +{files['added_count']} -{files['removed_count']} ~{files['changed_count']}")
+        for path in files["install_time_changes"][:10]:
+            print(f"  install-time  {_safe(path)}")
+        for path in files["new_executable_binaries"][:10]:
+            print(f"  new binary    {_safe(path)}")
+    else:
+        print(f"Files         unavailable ({files.get('reason')})")
+    maintainers = diff["maintainers"]
+    if maintainers.get("added") or maintainers.get("removed"):
+        print(f"Maintainers   +{', '.join(map(_safe, maintainers['added'])) or '-'}"
+              f"  -{', '.join(map(_safe, maintainers['removed'])) or '-'}")
+    for finding in diff["findings"]["added"][:25]:
+        where = finding["file"] or ""
+        print(f"  NEW {str(finding['severity']).upper():8} {finding['code']:24} {_safe(where):30} "
+              f"{_safe(finding['message'])}")
+    for finding in diff["findings"]["escalated"][:25]:
+        print(f"  UP  {str(finding['severity']).upper():8} {finding['code']:24} was {finding['previous_severity']}")
+    for reason in diff["reasons"]:
+        print(f"reason: {_safe(reason)}")

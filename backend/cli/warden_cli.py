@@ -169,6 +169,14 @@ def build_parser() -> argparse.ArgumentParser:
     sg.add_argument("--project-name")
     sg.set_defaults(func=local.cmd_sbom_generate)
 
+    dp = sub.add_parser("diff", help="Compare the behaviour of two releases of a package (fetches both)")
+    dp.add_argument("package")
+    dp.add_argument("from_version")
+    dp.add_argument("to_version")
+    dp.add_argument("--format", choices=["table", "json"], default="table")
+    dp.add_argument("--fail-on-drift", action="store_true", help="exit 2 when the newer release escalated")
+    dp.set_defaults(func=local.cmd_diff)
+
     policy = sub.add_parser("policy", help="Policy-as-code").add_subparsers(dest="action", required=True)
     pv = policy.add_parser("validate", help="Validate a policy document (YAML or JSON)")
     pv.add_argument("file")

@@ -145,3 +145,42 @@ def test_project_scan_fails_on_the_configured_severity(capsys, tmp_path):
 def test_project_scan_rejects_a_missing_directory(capsys, tmp_path):
     code, _, err = run(["project", "scan", str(tmp_path / "nope")], capsys)
     assert code == 3 and "not a directory" in err
+
+
+# --------------------------------------------------------------------------- diff
+class _DiffOrchestrator:
+    def analyze(self, ecosystem, name, version, options=None):
+        from app.analysis.orchestrator import AnalysisResult
+
+        hostile = version == "2.0.0"
+        signals = [{"code": "NETWORK_EGRESS", "severity": "high", "message": "\x1b[2Jcalls home",
+                    "location": {"file": "pkg/__init__.py", "line": 1}}] if hostile else []
+        return AnalysisResult(ecosystem, name, version, 60 if hostile else 5, 0, 60 if hostile else 5,
+                              "high" if hostile else "info", {}, signals, "2.0.0", 1, False,
+                              capabilities=["network"] if hostile else [])
+
+
+@pytest.fixture()
+def diff_engine(monkeypatch):
+    from cli import local
+
+    monkeypatch.setattr(local, "orchestrator_factory", _DiffOrchestrator)
+
+
+def test_diff_reports_escalation_and_can_fail(capsys, diff_engine):
+    code, out, _ = run(["diff", "demo", "1.0.0", "2.0.0"], capsys)
+    assert code == 0 and "ESCALATED" in out and "NETWORK_EGRESS" in out
+    assert "\x1b" not in out
+    code, _, err = run(["diff", "demo", "1.0.0", "2.0.0", "--fail-on-drift"], capsys)
+    assert code == 2 and "escalated" in err
+
+
+def test_diff_json_and_unchanged(capsys, diff_engine):
+    code, out, _ = run(["diff", "demo", "1.0.0", "1.0.1", "--format", "json", "--fail-on-drift"], capsys)
+    assert code == 0 and json.loads(out)["verdict"] == "unchanged"
+
+
+@pytest.mark.parametrize("argv", [["diff", "../x", "1", "2"], ["diff", "demo", "1.0", "1.0"]])
+def test_diff_rejects_bad_input(capsys, diff_engine, argv):
+    code, _, err = run(argv, capsys)
+    assert code == 3 and err.startswith("error:")
