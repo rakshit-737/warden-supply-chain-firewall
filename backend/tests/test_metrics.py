@@ -6,6 +6,7 @@ assert those values never appear in the exposition output.
 
 from __future__ import annotations
 
+import re
 import types
 import uuid
 from contextlib import contextmanager
@@ -126,7 +127,9 @@ def test_helpers_never_raise() -> None:
 def test_render_latest_exposition() -> None:
     body, content_type = metrics.render_latest()
     assert content_type.startswith("text/plain")
-    assert b"http_requests_total" in body and b"_created" not in body
+    assert b"http_requests_total" in body
+    # No *_created series (label values such as type="exception_created" are fine).
+    assert not re.search(rb"^[a-z_]+_created[{ ]", body, re.MULTILINE)
 
 
 # --------------------------------------------------------------------------- HTTP labels
