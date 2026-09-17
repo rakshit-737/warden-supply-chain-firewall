@@ -171,7 +171,7 @@ jobs:
         # multi-arch index digest returned by registry-1.docker.io on 2026-09-15), so the smoke test
         # starts the API against a live Redis the way the Compose deployment does. No password: the
         # service only exists for this job.
-        image: redis:7.4.11-alpine3.21@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+        image: redis:8.0.6-alpine3.21@sha256:5f61955be8ab2ccee9372b84ae4d4da2e2b156f87281e3f218544055e7ee04d4
         ports:
           - 6379:6379
         options: >-
