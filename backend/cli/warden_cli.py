@@ -141,11 +141,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--fail-on", choices=["warn", "block"], default="block")
     sub = p.add_subparsers(dest="command", required=True)
 
-    sp = sub.add_parser("scan", help="Scan a single package spec through the API")
+    # The API options are accepted after the subcommand too (``warden gate -r req.txt --fail-on block``).
+    # SUPPRESS keeps a value given before the subcommand when the option is not repeated after it.
+    api_options = argparse.ArgumentParser(add_help=False)
+    api_options.add_argument("--api", default=argparse.SUPPRESS, help="Warden API base URL")
+    api_options.add_argument("--token", default=argparse.SUPPRESS, help="Bearer access token")
+    api_options.add_argument("--no-color", action="store_true", default=argparse.SUPPRESS)
+    api_options.add_argument("--fail-on", choices=["warn", "block"], default=argparse.SUPPRESS)
+
+    sp = sub.add_parser("scan", help="Scan a single package spec through the API", parents=[api_options])
     sp.add_argument("spec", help="e.g. requests==2.32.3")
     sp.set_defaults(func=cmd_scan)
 
-    gp = sub.add_parser("gate", help="Scan a requirements file through the API and gate CI")
+    gp = sub.add_parser("gate", help="Scan a requirements file through the API and gate CI", parents=[api_options])
     gp.add_argument("-r", "--requirements", help="Path to requirements.txt")
     gp.set_defaults(func=cmd_gate)
 

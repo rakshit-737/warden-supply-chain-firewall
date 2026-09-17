@@ -277,3 +277,13 @@ def test_report_rejects_unknown_documents(tmp_path, capsys):
     saved.write_text('{"hello": "world"}', encoding="utf-8")
     code, _, err = run(["report", str(saved)], capsys)
     assert code == 3 and "cannot build a report" in err
+
+
+@pytest.mark.parametrize("argv", [
+    ["gate", "-r", "requirements.txt", "--api", "https://w.example.invalid", "--token", "t", "--fail-on", "warn"],
+    ["--api", "https://w.example.invalid", "--token", "t", "--fail-on", "warn", "gate", "-r", "requirements.txt"],
+])
+def test_api_options_work_before_and_after_the_subcommand(argv):
+    args = warden_cli.build_parser().parse_args(argv)
+    assert args.api == "https://w.example.invalid" and args.token == "t" and args.fail_on == "warn"
+    assert args.requirements == "requirements.txt"
