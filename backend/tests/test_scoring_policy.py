@@ -181,3 +181,18 @@ def test_the_model_may_escalate_once_the_rules_have_evidence():
 def test_fusion_never_lowers_the_rule_score():
     assert scoring.fuse(rule_score=70, ml_score=0, ml_available=True) == 70
     assert scoring.fuse(rule_score=70, ml_score=0, ml_available=True, mode="mean") == 70
+
+
+def test_unsupported_escalation_stays_below_the_high_band():
+    # Rule findings exist but none is high/critical with confidence >= 0.7.
+    assert scoring.fuse(rule_score=49, ml_score=99, ml_available=True, supported=False) == 59
+    assert scoring.fuse(rule_score=65, ml_score=99, ml_available=True, supported=False) == 65
+    assert scoring.fuse(rule_score=49, ml_score=99, ml_available=True, supported=True) == 99
+    assert scoring.fuse(rule_score=49, ml_score=99, ml_available=True) == 99  # legacy callers
+
+
+def test_escalation_support_needs_a_confident_serious_finding():
+    assert not scoring.supports_escalation([{"severity": "high", "confidence": 0.55}])
+    assert not scoring.supports_escalation([{"severity": "medium", "confidence": 0.95}])
+    assert scoring.supports_escalation([{"severity": "critical", "confidence": 0.7}])
+    assert scoring.supports_escalation([{"severity": "high"}])  # v1 signals carry no confidence
