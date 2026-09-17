@@ -45,6 +45,14 @@ The critical boundary is **registry → pipeline**. Archive contents *and* regis
 treated as attacker-controlled: names, summaries, maintainer fields, URLs, file names and every
 string literal inside the package.
 
+Uploads cross the same kind of boundary: manifest files submitted for a project scan and container
+image archives are hostile input too. Image archives are the one large body the API accepts; the
+route checks authorisation before reading it, caps it (`MAX_IMAGE_UPLOAD_BYTES`, and the same limit in
+nginx), analyses it in memory with the package extraction guards (every layer included) and runs one
+image scan at a time. The monitoring worker is a separate process with the API's database access and
+outbound access only to the intelligence and registry hosts; it claims work with a lease so that
+several workers never check the same package concurrently.
+
 ## 3. STRIDE
 
 | Threat | Vector | Controls |
@@ -99,3 +107,7 @@ back to rules only, and says so.
   elevated risk until it is rescanned.
 - Container images and CI workflows are checked statically in this repository; runtime hardening
   must be verified in the target environment.
+- Image scans hold the archive in memory; the upload limit and the one-at-a-time lock bound memory
+  per API process, not across several API replicas.
+- Without Trivy, image scans do not assess known vulnerabilities. They say so and warn, but the
+  check is then simply missing.
