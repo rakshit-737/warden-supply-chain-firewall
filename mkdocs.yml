@@ -1,0 +1,60 @@
+site_name: Warden
+site_description: Software supply-chain security — decide whether a dependency is safe to install, without running it.
+site_url: https://rakshit-737.github.io/warden-supply-chain-security/
+repo_url: https://github.com/rakshit-737/warden-supply-chain-security
+repo_name: rakshit-737/warden-supply-chain-security
+edit_uri: edit/main/docs/
+docs_dir: docs
+strict: true
+
+exclude_docs: |
+  site-requirements/
+  IDEATION.md
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/brightness-4
+        name: Light mode
+    - scheme: default
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/brightness-7
+        name: Dark mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - CLI reference: cli.md
+  - API reference: API.md
+  - Concepts:
+      - Architecture: ARCHITECTURE.md
+      - Data model: DATA_MODEL.md
+      - ML model: ML_MODEL.md
+      - Detection benchmark: BENCHMARK.md
+  - Security:
+      - Threat model: THREAT_MODEL.md
+      - Sandbox design: SANDBOX.md
