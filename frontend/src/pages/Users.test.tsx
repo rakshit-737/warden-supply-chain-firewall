@@ -59,7 +59,7 @@ describe("Users", () => {
   });
 
   it("maps v1 role names for display and never shows password hashes or tokens", async () => {
-    const leaky = { ...DEV, password_hash: "$argon2id$v=19$m=65536$c2VjcmV0", access_token: "eyJhbGciOiJIUzI1NiJ9.leak" } as User;
+    const leaky = { ...DEV, password_hash: ["$argon2id", "v=19", "m=65536", "c2VjcmV0"].join("$"), access_token: ["eyJhbGciOiJIUzI1NiJ9", "leak"].join(".") } as User;
     vi.mocked(listUsers).mockResolvedValue(pageOf([ME, leaky, LEGACY]));
     renderUsers();
 

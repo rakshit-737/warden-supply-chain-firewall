@@ -1,0 +1,3 @@
+# Reviewed false positives already in git history (see .gitleaks.toml).
+# Synthetic argon2 hash / JWT fragment proving the Users page never renders credentials.
+a6d8c66acaed7788048a4312e7d9a81bd192d945:frontend/src/pages/Users.test.tsx:generic-api-key:62
