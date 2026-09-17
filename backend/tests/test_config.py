@@ -131,10 +131,11 @@ def test_production_rejects_debug() -> None:
         production(DEBUG=True)
 
 
-def test_production_sandbox_requires_gvisor() -> None:
-    with pytest.raises(ValidationError, match="runsc"):
-        production(SANDBOX_ENABLED=True, SANDBOX_RUNTIME="runc")
-    assert production(SANDBOX_ENABLED=True, SANDBOX_RUNTIME="runsc").SANDBOX_ENABLED
+def test_the_unimplemented_sandbox_cannot_be_switched_on() -> None:
+    for runtime in ("runc", "runsc"):
+        with pytest.raises(ValidationError, match="not implemented"):
+            production(SANDBOX_ENABLED=True, SANDBOX_RUNTIME=runtime)
+    assert production().SANDBOX_ENABLED is False
 
 
 def test_non_production_environments_do_not_fail_closed() -> None:

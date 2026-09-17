@@ -213,6 +213,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _enforce_production_hardening(self) -> Settings:
+        if self.SANDBOX_ENABLED:
+            # Only the settings exist (docs/SANDBOX.md); refusing the switch keeps /system/info and
+            # the console from reporting a dynamic-analysis layer that does not run.
+            raise ValueError("SANDBOX_ENABLED is not supported: the dynamic sandbox is not implemented "
+                             "in this version.")
         if self.ENV == "production":
             # Length is measured after stripping, so a whitespace-only value cannot pass.
             secret = self.SECRET_KEY.strip()
@@ -223,8 +228,6 @@ class Settings(BaseSettings):
                 raise ValueError("FIRST_ADMIN_PASSWORD must be changed from its default (>=12 chars) in production.")
             if self.DEBUG:
                 raise ValueError("DEBUG must be False in production.")
-            if self.SANDBOX_ENABLED and self.SANDBOX_RUNTIME != "runsc":
-                raise ValueError("The dynamic sandbox requires the gVisor runtime (runsc) in production.")
         return self
 
     @property
