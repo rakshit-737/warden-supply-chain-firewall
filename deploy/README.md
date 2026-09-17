@@ -89,7 +89,10 @@ add `--scale api=N` again. Until both sides match, every scrape gets HTTP 401 an
   - `/metrics` and every `/api/v1/health*` path are answered with 404 and never proxied. The container
     healthchecks call the probes inside the api container, the API exempts them from rate limiting,
     and `/ready` queries the database on each call.
-  - Request bodies are capped at 5 MiB. The API read timeout is 210 s, because scans run synchronously.
+  - Request bodies are capped at 5 MiB, except `POST /api/v1/containers/scans` (256 MiB, streamed to
+    the API). API read timeouts follow the synchronous work behind each route: 330 s for package
+    scans, 660 s for release diffs and on-demand monitoring checks (two analyses), 960 s for image
+    scans. Raise `MAX_IMAGE_UPLOAD_BYTES` and the nginx limit together if you need larger images.
     API responses are never gzip-compressed or cached.
   - nginx resolves `api` through Docker's DNS at runtime. A recreated api container is reached at its
     new address without restarting `web`, and `web` starts even while api is down; API requests
