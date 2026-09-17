@@ -20,6 +20,7 @@ frontend/.env
 # ML artifacts are generated (reproducibly) by `make train` or the Docker build.
 backend/app/analysis/artifacts/model.joblib
 backend/app/analysis/artifacts/metrics.json
+backend/app/analysis/artifacts/MODEL_CARD.md
 backend/ml/dataset.csv
 
 # Node / frontend
