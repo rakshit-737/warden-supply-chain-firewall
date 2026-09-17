@@ -105,7 +105,7 @@ services:
 
   cache:
     <<: *hardening
-    image: redis:7.4.11-alpine3.21@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+    image: redis:8.0.6-alpine3.21@sha256:5f61955be8ab2ccee9372b84ae4d4da2e2b156f87281e3f218544055e7ee04d4
     # Runs directly as the image's unprivileged `redis` user, so the entrypoint never runs as root and
     # no capability is needed.
     user: redis
