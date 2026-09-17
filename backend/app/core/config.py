@@ -90,7 +90,11 @@ class Settings(BaseSettings):
     MAX_PATH_DEPTH: int = 32
     MAX_METADATA_BYTES: int = 32 * 1024 * 1024  # registry JSON responses (numpy's is large)
     EXTRACTION_TIMEOUT_SECONDS: int = 60  # wall-clock budget for reading one archive
-    SCAN_TIMEOUT_SECONDS: int = 180
+    # Whole-scan budget. Measured on a large real sdist (numpy: 8k members, ~20 MB), fetching and
+    # extracting alone took 20-120s depending on link speed, and analyzers add ~30s. Too small a
+    # budget turns an ordinary big package into an "incomplete analysis" verdict, which fails
+    # closed and therefore reads as risk.
+    SCAN_TIMEOUT_SECONDS: int = 300
     ANALYZER_TIMEOUT_SECONDS: int = 60
     ANALYZER_WORKERS: int = 4
     PYPI_JSON_BASE: str = "https://pypi.org/pypi"

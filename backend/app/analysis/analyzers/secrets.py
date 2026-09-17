@@ -124,7 +124,7 @@ taxonomy.register(
 # --------------------------------------------------------------------------- bounds
 MAX_TEXT_FILE_CHARS = 2 * 1024 * 1024
 MAX_TOTAL_TEXT_CHARS = 64 * 1024 * 1024
-MAX_BINARY_SCAN_BYTES = 16 * 1024 * 1024
+MAX_BINARY_SCAN_BYTES = 8 * 1024 * 1024
 MIN_BINARY_RUN = 20
 MAX_AST_CHARS = 1024 * 1024
 MAX_GENERIC_LINE_CHARS = 4096
@@ -132,7 +132,12 @@ MAX_RAW_HITS_PER_FILE = 2000
 MAX_GENERIC_CANDIDATES_PER_FILE = 2000
 MAX_FINDINGS_PER_FILE = 25
 MAX_FINDINGS = 200
-BUILTIN_BUDGET_FRACTION = 0.6  # of ANALYZER_TIMEOUT_SECONDS
+# Of ANALYZER_TIMEOUT_SECONDS. The analyzer shares CPU with every other analyzer, so its own
+# deadline has to leave room for that contention: measured on numpy (2.5k text files, 1.9k
+# binaries) a 0.6 share still overran the orchestrator timeout and was killed, which is reported
+# as an incomplete scan. A smaller share degrades to partial coverage instead, which the finding
+# records honestly.
+BUILTIN_BUDGET_FRACTION = 0.45
 GITLEAKS_BUDGET_FRACTION = 0.9  # gitleaks must finish before the orchestrator's analyzer timeout
 MIN_GITLEAKS_TIMEOUT_SECONDS = 1.0
 MAX_GITLEAKS_REPORT_BYTES = 8 * 1024 * 1024
