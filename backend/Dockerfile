@@ -17,7 +17,7 @@
 #   bytecode is precompiled so the container works with a read-only root filesystem.
 
 # ---- Stage 1: dependencies + model training --------------------------------------------------
-FROM python:3.12.14-slim-trixie@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea AS builder
+FROM python:3.14.7-slim-trixie@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6 AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -48,7 +48,7 @@ RUN PYTHONPATH=/src python -m ml.train --n 6000 --seed 1337 \
 RUN python -m pip uninstall --yes pip
 
 # ---- Stage 2: runtime (no compilers) ---------------------------------------------------------
-FROM python:3.12.14-slim-trixie@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea AS runtime
+FROM python:3.14.7-slim-trixie@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6 AS runtime
 
 LABEL org.opencontainers.image.title="warden-x-api" \
       org.opencontainers.image.description="Warden X software supply-chain security API" \
