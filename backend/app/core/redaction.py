@@ -191,6 +191,13 @@ _CONTROL_RE = re.compile(
     "[\x00-\x08\x0b-\x1f\x7f-\x9f\xad\u061c\u180e\u200b-\u200f\u2028\u2029\u202a-\u202e"
     "\u2060-\u2064\u2066-\u206f\ufeff\ufff9-\ufffb\U000e0000-\U000e007f]"
 )
+# Terminal escape sequences (CSI such as ``ESC[31m``, OSC, two-byte ESC forms) and single control or
+# invisible characters. Their final byte is often a letter, so they are treated as separators when
+# redacting: a token right after ``ESC[31m`` must not hide behind the "no letter before" anchor.
+_SEPARATOR_RE = re.compile(
+    r"(\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]{0,512}(?:\x07|\x1b\\)?|\x1b[@-Z\\-_]|"
+    + _CONTROL_RE.pattern + ")"
+)
 _MD_SPECIAL_RE = re.compile(r"([\\`*_{}\[\]()#+!|~])")
 
 # The private-key marker includes an END line: a marker that ended at "[REDACTED]" would be
@@ -288,9 +295,10 @@ def sanitize_text(value: object, *, max_len: int = 300, redact: bool = True, kee
     # Lone surrogates (from surrogateescape-decoded bytes) cannot be UTF-8 encoded later.
     s = s.encode("utf-8", "backslashreplace").decode("utf-8")
     if redact:
-        # Before escaping too: the escaped form of a bidi override ends in a letter, which would
-        # otherwise glue onto a following token and defeat the "no letter before" anchor.
-        s = redact_text(s)
+        # Before escaping too, segment by segment: an escape sequence (or the escaped form of a
+        # bidi override) ends in a letter that would otherwise glue onto a following token and
+        # defeat the "no letter before" anchor.
+        s = "".join(part if i % 2 else redact_text(part) for i, part in enumerate(_SEPARATOR_RE.split(s)))
     if not keep_newlines:
         s = s.replace("\n", "\\n")
     s = _CONTROL_RE.sub(_escape_char, s)

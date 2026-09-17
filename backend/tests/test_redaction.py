@@ -405,3 +405,11 @@ def test_escaped_bidi_prefix_does_not_hide_a_following_token() -> None:
     token = "gh" + "p_" + "A" * 36
     out = redaction.sanitize_text("pkg\u202e" + token)
     assert token not in out and "\u202e" not in out
+
+
+def test_terminal_escape_sequence_does_not_shield_a_following_token() -> None:
+    token = "gh" + "p_" + "C" * 36
+    for prefix in ("\x1b[31m", "\x1b[1;4m", "\x1b]0;title\x07", "\x1bM"):
+        out = redaction.sanitize_text("pkg" + prefix + token)
+        assert token not in out, prefix
+        assert "\x1b" not in out
