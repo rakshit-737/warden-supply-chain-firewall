@@ -124,6 +124,9 @@ class Settings(BaseSettings):
     GRYPE_BINARY: str = "grype"
     TRIVY_BINARY: str = "trivy"
     CONTAINER_SCAN_TIMEOUT_SECONDS: int = 900
+    # Upload limit for POST /containers/scans only (every other route keeps MAX_REQUEST_BODY_BYTES).
+    # Images are analysed in memory, so this also bounds per-scan memory; scans run one at a time.
+    MAX_IMAGE_UPLOAD_BYTES: int = 256 * 1024 * 1024
 
     # --- Vulnerability intelligence ---------------------------------------
     INTEL_ENABLED: bool = True

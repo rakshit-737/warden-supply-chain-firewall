@@ -400,15 +400,18 @@ class BodySizeLimitMiddleware:
         self.app = app
         self.max_body_bytes = max_body_bytes
 
-    def _limit(self) -> int:
+    def _limit(self, scope: Scope | None = None) -> int:
         configured = self.max_body_bytes if self.max_body_bytes is not None else settings.MAX_REQUEST_BODY_BYTES
+        image_upload = f"{settings.API_V1_PREFIX}/containers/scans"
+        if scope is not None and scope.get("method") == "POST" and scope.get("path") == image_upload:
+            configured = max(int(configured), int(settings.MAX_IMAGE_UPLOAD_BYTES))
         return max(0, int(configured))
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        limit = self._limit()
+        limit = self._limit(scope)
         declared = {v.strip() for v in Headers(scope=scope).getlist("content-length")}
         if declared:
             value = next(iter(declared))
