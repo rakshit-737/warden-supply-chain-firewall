@@ -22,6 +22,24 @@
 
 ---
 
+<p align="center">
+  <img src="docs/images/scan-detail.png" alt="Warden scan detail: a blocked package with its risk scores, policy reasons and the correlated attack chain" width="900">
+</p>
+
+<details>
+<summary><strong>More screenshots</strong></summary>
+
+| Dashboard | Project scan |
+|---|---|
+| ![Dashboard with verdict, severity and finding-code summaries](docs/images/dashboard.png) | ![Project scan with hygiene findings and SBOM export](docs/images/project-scan.png) |
+| **Release diff** | **Scan history** |
+| ![Release diff showing new capabilities and findings](docs/images/release-diff.png) | ![Scan list](docs/images/scans.png) |
+
+The data in these screenshots comes from `make demo`: real pipeline results for Warden's inert benchmark
+samples, not real PyPI packages.
+
+</details>
+
 ## Why this exists
 
 A single `pip install` runs third-party code with the developer's or the CI runner's privileges.
