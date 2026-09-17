@@ -128,6 +128,8 @@ class AnalysisResult:
     model_version: str | None = None
     explanation: dict = field(default_factory=dict)
     scan_options: dict = field(default_factory=dict)
+    # Bounded per-member listing (path, size, sha256, kind, executable) used by release diffs.
+    file_inventory: list[dict] = field(default_factory=list)
 
 
 _RESULT_FIELDS = frozenset(f.name for f in fields(AnalysisResult))
@@ -289,6 +291,23 @@ def _model_version() -> str | None:
 
 
 # --------------------------------------------------------------------------- summaries
+MAX_FILE_INVENTORY = 5000
+
+
+def file_inventory(ctx: Any) -> list[dict[str, Any]]:
+    """The archive members safe extraction saw, sorted by path and bounded."""
+    rows = []
+    for entry in sorted(getattr(ctx, "inventory", None) or [], key=lambda e: e.relpath)[:MAX_FILE_INVENTORY]:
+        rows.append({
+            "path": sanitize_text(entry.relpath, max_len=300),
+            "size": entry.size,
+            "sha256": entry.sha256,
+            "kind": entry.kind,
+            "executable": bool(entry.is_executable_binary),
+        })
+    return rows
+
+
 def package_intel_summary(ctx: Any) -> dict[str, Any]:
     """Facts about the analysed release. ``None`` means "not known", never "zero"."""
     md = getattr(ctx, "metadata", None) or {}
@@ -676,6 +695,7 @@ class Orchestrator:
             model_version=_model_version() if breakdown.ml_available else None,
             explanation=_explanation(findings, breakdown),
             scan_options=_options_dict(options),
+            file_inventory=file_inventory(ctx),
         )
 
         incomplete = any(f.code in _NON_CACHEABLE_CODES for f in findings)
