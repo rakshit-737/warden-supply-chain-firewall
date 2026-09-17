@@ -70,6 +70,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UVICORN_WORKERS=1 \
     FORWARDED_ALLOW_IPS=127.0.0.1
 
+# Apply Debian security updates at build time. The base is pinned by digest for reproducibility,
+# but upstream rebuilds lag behind Debian's security fixes: the CI Trivy gate found fixable
+# CRITICAL/HIGH issues (perl-base, gzip, libpcre2, libsqlite3) in the newest published digest.
+# Upgrading here closes that gap; the Trivy gate still verifies the result on every build.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 # Unprivileged runtime identity: fixed UID/GID 10001, no home directory, no login shell. The
 # analyzer ingests hostile archives, so it must never run as root. The base image's pip is removed
 # as well (less tooling left in the image; this is hygiene, not a security boundary).
