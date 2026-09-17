@@ -1,0 +1,154 @@
+"""Human-readable reports (Markdown and standalone HTML) from any Warden JSON result.
+
+:func:`load_result` accepts the JSON the CLI and API produce - ``warden project scan --format
+json``, ``warden image scan --format json``, ``warden diff --format json`` and an API scan
+(``GET /scans/{id}``) - and normalises it to a title, facts and findings. Every value in those
+documents may come from a hostile package or image, so the renderers escape everything for their
+sink and never emit raw HTML, links or scripts from the input. The HTML page is self-contained,
+loads nothing, and carries a CSP that forbids scripts.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any
+
+from app.analysis.findings import Finding
+from app.core.redaction import html_escape, markdown_escape
+
+_SEVERITY_ORDER = ("critical", "high", "medium", "low", "info")
+MAX_REPORT_FINDINGS = 1000
+
+
+class UnsupportedResult(ValueError):
+    """The JSON document is not a Warden result this module understands."""
+
+
+@dataclass
+class LoadedResult:
+    kind: str
+    title: str
+    facts: list[tuple[str, str]] = field(default_factory=list)
+    findings: list[Finding] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+
+def _findings(items: Any) -> list[Finding]:
+    out = []
+    for item in (items or [])[:MAX_REPORT_FINDINGS]:
+        if isinstance(item, dict) and item.get("code") and item.get("severity"):
+            try:
+                out.append(Finding.from_dict(item))
+            except (TypeError, ValueError, KeyError):
+                continue
+    return sorted(out, key=lambda f: (-f.severity.rank, f.code, f.finding_id))
+
+
+def load_result(document: Any) -> LoadedResult:
+    if not isinstance(document, dict):
+        raise UnsupportedResult("expected a JSON object")
+    if "package_name" in document and "signals" in document:
+        name = f"{document.get('package_name')}=={document.get('version')}"
+        return LoadedResult("package", f"Package scan: {name}", [
+            ("Decision", str(document.get("decision"))), ("Risk score", str(document.get("risk_score"))),
+            ("Severity", str(document.get("severity"))), ("Environment", str(document.get("environment"))),
+        ], _findings(document.get("signals")))
+    if "verdict" in document and "from_version" in document:
+        risk = document.get("risk") or {}
+        findings_block = document.get("findings") or {}
+        notes = [str(r) for r in document.get("reasons") or []]
+        return LoadedResult("diff", f"Release diff: {document.get('name')} {document.get('from_version')} -> "
+                                    f"{document.get('to_version')}", [
+            ("Verdict", str(document.get("verdict"))),
+            ("Risk", f"{risk.get('from')} -> {risk.get('to')} ({risk.get('delta')})"),
+            ("New findings", str(findings_block.get("added_count", 0))),
+        ], _findings(findings_block.get("added")), notes)
+    if "layer_count" in document and "findings" in document:
+        refs = document.get("image_refs") or ["image"]
+        counts = document.get("component_counts") or {}
+        return LoadedResult("image", f"Image scan: {refs[0]}", [
+            ("Decision", str(document.get("decision"))), ("Risk score", str(document.get("risk_score"))),
+            ("Digest", str(document.get("config_digest"))), ("User", str(document.get("user") or "root")),
+            ("Packages", ", ".join(f"{k}: {v}" for k, v in sorted(counts.items())) or "none found"),
+            ("Complete", "yes" if document.get("complete") else "no"),
+            ("Vulnerability scan", str((document.get("vulnerability_scan") or {}).get("status"))),
+        ], _findings(document.get("findings")), [str(r) for r in document.get("reasons") or []])
+    if "project" in document and "findings" in document:
+        return LoadedResult("project", f"Project scan: {document.get('project')}", [
+            ("Components", str(document.get("components"))), ("Direct", str(document.get("direct"))),
+            ("Result", "failed" if document.get("failed") else "passed"),
+        ], _findings(document.get("findings")), [str(w) for w in document.get("warnings") or []][:20])
+    raise UnsupportedResult("not a Warden scan, project, image or diff result")
+
+
+def _counts(findings: list[Finding]) -> dict[str, int]:
+    counts = dict.fromkeys(_SEVERITY_ORDER, 0)
+    for f in findings:
+        counts[f.severity.value] += 1
+    return counts
+
+
+def _where(f: Finding) -> str:
+    if f.location and f.location.file:
+        return f"{f.location.file}:{f.location.line}" if f.location.line else f.location.file
+    return ""
+
+
+def render_markdown(result: LoadedResult, *, generated: datetime | None = None) -> str:
+    moment = (generated or datetime.now(timezone.utc)).strftime("%Y-%m-%d %H:%M UTC")
+    lines = [f"# {markdown_escape(result.title, max_len=300)}", "", f"_Generated by Warden X on {moment}._", ""]
+    lines += ["| | |", "|---|---|"]
+    lines += [f"| {markdown_escape(k)} | {markdown_escape(v, max_len=300)} |" for k, v in result.facts]
+    counts = _counts(result.findings)
+    lines += ["", "## Findings", "", " · ".join(f"{k}: {v}" for k, v in counts.items()), ""]
+    if not result.findings:
+        lines.append("No findings were reported. This is not proof that the artifact is safe.")
+    else:
+        lines += ["| Severity | Code | Location | Message |", "|---|---|---|---|"]
+        for f in result.findings:
+            lines.append(f"| {f.severity.value} | {markdown_escape(f.code, max_len=64)} | "
+                         f"{markdown_escape(_where(f), max_len=200)} | {markdown_escape(f.message, max_len=300)} |")
+    if result.notes:
+        lines += ["", "## Notes", ""] + [f"- {markdown_escape(n, max_len=300)}" for n in result.notes]
+    return "\n".join(lines) + "\n"
+
+
+_CSS = (
+    "body{font-family:system-ui,sans-serif;margin:2rem;color:#1b1f24;background:#fff}"
+    "table{border-collapse:collapse;margin:1rem 0}td,th{border:1px solid #d0d7de;padding:.35rem .6rem;"
+    "text-align:left;vertical-align:top}th{background:#f6f8fa}.critical{color:#a40e26}.high{color:#bc4c00}"
+    ".medium{color:#7d4e00}code{font-family:ui-monospace,monospace}"
+    "@media (prefers-color-scheme:dark){body{background:#0d1117;color:#e6edf3}th{background:#161b22}"
+    "td,th{border-color:#30363d}.critical{color:#ff7b72}.high{color:#ffa657}.medium{color:#e3b341}}"
+)
+
+
+def render_html(result: LoadedResult, *, generated: datetime | None = None) -> str:
+    moment = (generated or datetime.now(timezone.utc)).strftime("%Y-%m-%d %H:%M UTC")
+    title = html_escape(result.title, max_len=300)
+    facts = "".join(f"<tr><th>{html_escape(k)}</th><td>{html_escape(v, max_len=300)}</td></tr>"
+                    for k, v in result.facts)
+    counts = " · ".join(f"{k}: {v}" for k, v in _counts(result.findings).items())
+    if result.findings:
+        rows = "".join(
+            f'<tr><td class="{f.severity.value}">{f.severity.value}</td><td><code>{html_escape(f.code, max_len=64)}'
+            f"</code></td><td>{html_escape(_where(f), max_len=200)}</td>"
+            f"<td>{html_escape(f.message, max_len=300)}</td></tr>"
+            for f in result.findings
+        )
+        table = f"<table><tr><th>Severity</th><th>Code</th><th>Location</th><th>Message</th></tr>{rows}</table>"
+    else:
+        table = "<p>No findings were reported. This is not proof that the artifact is safe.</p>"
+    notes = ""
+    if result.notes:
+        items = "".join(f"<li>{html_escape(n, max_len=300)}</li>" for n in result.notes)
+        notes = f"<h2>Notes</h2><ul>{items}</ul>"
+    return (
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+        "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'\">"
+        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+        f"<title>{title}</title><style>{_CSS}</style></head><body>"
+        f"<h1>{title}</h1><p><em>Generated by Warden X on {moment}.</em></p>"
+        f"<table>{facts}</table><h2>Findings</h2><p>{counts}</p>{table}{notes}</body></html>\n"
+    )
