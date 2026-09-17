@@ -5,7 +5,7 @@
 # whoever can push a release tag can also edit this file in the commit they tag and drop them.
 #   1. PyPI: https://pypi.org/manage/account/publishing/ → add a "pending" trusted publisher:
 #        PyPI project name: warden-supply-chain-firewall
-#        Owner: rakshit-737   Repository: warden-supply-chain-firewall
+#        Owner: rakshit-737   Repository: warden-supply-chain-security
 #        Workflow name: publish.yml   Environment: pypi
 #   2. Settings → Environments → create `pypi` and protect it:
 #        - Required reviewers: the release managers, with "Prevent self-review" enabled.
