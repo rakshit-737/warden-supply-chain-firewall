@@ -10,7 +10,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "warden-supply-chain-firewall"
+name = "warden-supply-chain-security"
 version = "2.0.0"
 description = "Behavioural software supply-chain firewall — statically analyses PyPI packages and fuses rule-based + ML signals into a 0-100 risk score to block malicious & typosquatted dependencies before install."
 readme = "README.md"
@@ -56,7 +56,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# `pip install "warden-supply-chain-firewall[server]"` for the full analysis engine + API.
+# `pip install "warden-supply-chain-security[server]"` for the full analysis engine + API.
 server = [
   "fastapi>=0.115",
   "uvicorn[standard]>=0.34",

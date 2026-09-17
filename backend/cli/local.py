@@ -1,6 +1,6 @@
 """Local CLI commands that run Warden's engines in-process (no API server needed).
 
-These commands need the server extras (``pip install "warden-supply-chain-firewall[server]"``);
+These commands need the server extras (``pip install "warden-supply-chain-security[server]"``);
 the API-backed ``scan`` and ``gate`` commands keep working with the lightweight base install, so
 every engine import here is deferred until a local command actually runs.
 
@@ -38,7 +38,7 @@ def _require_engine() -> None:
         import app.sbom  # noqa: F401
     except ImportError as exc:  # pragma: no cover - depends on the installation
         raise EngineUnavailable(
-            'local commands need the analysis engine: pip install "warden-supply-chain-firewall[server]"'
+            'local commands need the analysis engine: pip install "warden-supply-chain-security[server]"'
         ) from exc
 
 
