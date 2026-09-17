@@ -116,10 +116,17 @@ CONTEXT_STARTUP = "interpreter_startup"
 CONTEXT_IMPORT_TIME = "import_time"
 CONTEXT_RUNTIME = "runtime"
 CONTEXT_TEST = "test"
+# Files that ship in the sdist but never execute when the package is installed or
+# imported: CI pipelines, vendored build tooling, documentation and examples. A real
+# match there (numpy vendors a meson CI script that pipes curl into a shell) is worth
+# reporting, but not at the severity of the same pattern in installed code.
+CONTEXT_AUXILIARY = "auxiliary"
 CONTEXT_SCRIPT = "script"
 CONTEXT_BINARY = "binary"
 CONTEXT_DATA = "data"
 CONTEXT_UNKNOWN = "unknown"
+# Contexts whose matches are reported but do not carry full severity.
+_DEMOTED_CONTEXTS = frozenset({CONTEXT_TEST, CONTEXT_AUXILIARY})
 
 ORIGIN_TEXT = "utf8_text"  # ctx.files: offsets into the UTF-8 encoding of the decoded text
 ORIGIN_RAW = "raw_bytes"  # ctx.binaries: offsets into the retained bytes
@@ -329,6 +336,18 @@ def file_kind(relpath: str, head: bytes, *, binary: bool) -> str:
     return _shebang_kind(head) or "other_text"
 
 
+_AUXILIARY_DIRS = frozenset({
+    "ci", ".ci", ".github", ".gitlab", ".circleci", "docs", "doc", "documentation", "examples",
+    "example", "samples", "benchmarks", "benchmark", "ciimage", "ciimages",
+})
+
+
+def is_auxiliary_path(relpath: str) -> bool:
+    """True for files that ship with a package but never run on install or import."""
+    parts = relpath.replace("\\", "/").lower().split("/")
+    return any(part in _AUXILIARY_DIRS for part in parts[:-1])
+
+
 def is_test_path(relpath: str) -> bool:
     parts = relpath.replace("\\", "/").lower().split("/")
     return any(part in _TEST_DIRS for part in parts[:-1]) or bool(_TEST_FILE_RE.fullmatch(parts[-1]))
@@ -417,6 +436,8 @@ def execution_context(target: ScanTarget, line: int | None) -> str:
     base = target.relpath.rsplit("/", 1)[-1].lower()
     if is_test_path(target.relpath):
         return CONTEXT_TEST
+    if is_auxiliary_path(target.relpath):
+        return CONTEXT_AUXILIARY
     if target.kind == "binary":
         return CONTEXT_BINARY
     if base == "setup.py":
@@ -492,7 +513,7 @@ class _RuleHits:
 
     def add(self, occurrence: _Occurrence) -> None:
         self.file_count += 1
-        if self.primary is None and occurrence.context != CONTEXT_TEST:
+        if self.primary is None and occurrence.context not in _DEMOTED_CONTEXTS:
             self.primary = occurrence
         if len(self.occurrences) < MAX_OCCURRENCES:
             self.occurrences.append(occurrence)
@@ -526,7 +547,9 @@ def _rule_finding(hits: _RuleHits) -> Finding:
     weight = SEVERITY_WEIGHTS[meta.severity] * (TEST_CONTEXT_WEIGHT_FACTOR if test_only else 1.0)
     others = hits.file_count - 1
     where = primary.relpath + (f" and {others} other file(s)" if others > 0 else "")
-    suffix = " (test files only)" if test_only else ""
+    contexts = sorted({o.context for o in hits.occurrences} & _DEMOTED_CONTEXTS)
+    where_only = " and ".join(contexts) if contexts else "test"
+    suffix = f" ({where_only} files only)" if test_only else ""
     evidence = {
         "rule_id": meta.rule_id,
         "rule": meta.name,
@@ -704,6 +727,7 @@ __all__ = [
     "compile_ruleset",
     "execution_context",
     "file_kind",
+    "is_auxiliary_path",
     "is_test_path",
     "load_yara",
     "looks_binary",
