@@ -183,7 +183,10 @@ describe("ScanDetail", () => {
 
     await user.click(screen.getByRole("tab", { name: "Provenance" }));
     expect(screen.getByText("Hashes verified").nextElementSibling).toHaveTextContent("Yes");
-    expect(screen.getByRole("link", { name: /github.com\/example\/reqeusts/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /example\/reqeusts/ })).toHaveAttribute(
+      "href",
+      "https://github.com/example/reqeusts",
+    );
 
     await user.click(screen.getByRole("tab", { name: /Analyzer runs/ }));
     expect(screen.getByText("Tool unavailable")).toBeInTheDocument();
