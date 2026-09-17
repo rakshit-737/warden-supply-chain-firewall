@@ -168,9 +168,9 @@ verdict the deterministic layer does not support.
 
 - Project-level scanning API and the dependency-graph UI (the SBOM and graph engines exist; the HTTP
   routes and pages are placeholders).
-- Release-to-release behavioural diffing, SARIF output, container image scanning, the continuous
+- Release-to-release behavioural diffing, container image scanning, the continuous
   monitoring worker, and the opt-in dynamic sandbox.
-- CLI beyond `scan` and `gate`.
+- CLI `diff`, `image scan` and `report` commands, and a packaged GitHub Action.
 - npm and other ecosystems.
 
 ## Quick start
@@ -201,14 +201,32 @@ pytest -q                        # offline: any test that touches the network fa
 cd frontend && npm install && npm run dev
 ```
 
-## CI gate
+## CLI and CI gate
+
+Package verdicts come from the API (`WARDEN_API` / `WARDEN_TOKEN` may replace the flags):
 
 ```bash
 python -m cli.warden_cli scan requests==2.32.3 --api "$WARDEN_API" --token "$WARDEN_TOKEN"
 python -m cli.warden_cli gate -r requirements.txt --api "$WARDEN_API" --token "$WARDEN_TOKEN" --fail-on block
 ```
 
-Exit codes: `0` allowed or warned, `2` something was blocked, `3` usage or transport error.
+Local commands (run from `backend/`) use the engines in-process, need no server or token, and never
+execute project code:
+
+```bash
+python -m cli.warden_cli project scan . --fail-on high            # manifest hygiene + dependency confusion
+python -m cli.warden_cli project scan . --format sarif -o warden.sarif
+python -m cli.warden_cli sbom generate . --format cyclonedx -o bom.json   # honours SOURCE_DATE_EPOCH
+python -m cli.warden_cli policy validate ../policies/production.yaml
+```
+
+The SARIF output is validated against the official SARIF 2.1.0 schema in the test suite and can be
+uploaded with `github/codeql-action/upload-sarif`; results point at the manifest file and, when
+known, the line that declared the dependency. Findings stay stable across runs through a
+fingerprint derived from the finding id.
+
+Exit codes: `0` allowed or passed, `2` something was blocked or failed the check, `3` usage or
+transport error.
 
 ## Security posture of Warden itself
 
