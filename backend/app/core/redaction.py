@@ -288,9 +288,8 @@ def sanitize_text(value: object, *, max_len: int = 300, redact: bool = True, kee
     # Lone surrogates (from surrogateescape-decoded bytes) cannot be UTF-8 encoded later.
     s = s.encode("utf-8", "backslashreplace").decode("utf-8")
     if redact:
-        # Before escaping too: an escape sequence such as ``‮`` ends in a word character
-        # and would otherwise glue onto a following token and hide it from boundary-anchored
-        # patterns.
+        # Before escaping too: the escaped form of a bidi override ends in a letter, which would
+        # otherwise glue onto a following token and defeat the "no letter before" anchor.
         s = redact_text(s)
     if not keep_newlines:
         s = s.replace("\n", "\\n")
