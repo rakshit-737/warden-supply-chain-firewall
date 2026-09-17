@@ -179,8 +179,28 @@ def _install_metrics_endpoint(app: FastAPI) -> None:
         if expected and not metrics_token_valid(request.headers.get("authorization"), expected):
             return error_response(401, "unauthorized", "A valid metrics bearer token is required",
                                   headers={"WWW-Authenticate": 'Bearer realm="metrics"'})
+        _refresh_scrape_time_gauges()
         body, content_type = metrics.render_latest()
         return Response(content=body, media_type=content_type)
+
+
+def _refresh_scrape_time_gauges() -> None:
+    """Gauges whose source of truth is the database are computed when Prometheus scrapes.
+
+    The monitoring worker runs in its own process (and registry), so the API reports the number of
+    watched packages itself. A database problem leaves the previous value in place; it never fails
+    the scrape.
+    """
+    try:
+        from sqlalchemy import func, select
+
+        from app.db.models import MonitoredPackage
+
+        with SessionLocal() as db:
+            enabled = db.scalar(select(func.count(MonitoredPackage.id)).where(MonitoredPackage.enabled.is_(True)))
+        metrics.set_monitored_packages(enabled or 0)
+    except Exception as exc:  # observability must never break the endpoint
+        log.warning("metrics_gauge_refresh_failed", error_type=type(exc).__name__)
 
 
 # --------------------------------------------------------------------------- factory

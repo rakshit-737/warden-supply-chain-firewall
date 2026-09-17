@@ -44,9 +44,9 @@ scrape_configs:
         replacement: warden-api
 
   # The monitor worker (compose profile "worker") runs in its own process, and Prometheus client
-  # registries are per-process. Its gauges (queue_depth, monitored_packages) only become visible
-  # to Prometheus if the worker exposes its own metrics endpoint or the API computes them at
-  # scrape time. No worker scrape job is configured because no worker endpoint exists yet.
+  # registries are per-process. The API computes monitored_packages from the database at scrape
+  # time, so that gauge is visible without scraping the worker. queue_depth has no producer yet.
+  # No worker scrape job is configured because the worker exposes no metrics endpoint.
 
   - job_name: prometheus
     static_configs:

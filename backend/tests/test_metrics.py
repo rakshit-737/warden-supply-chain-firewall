@@ -495,3 +495,15 @@ def test_known_series_exist_at_zero_after_app_start():
     assert 'policy_decisions_total{decision="warn",environment="production"}' in text
     assert 'analyzer_runs_total{analyzer="install_vectors",status="timeout"}' in text
     assert 'security_events_total{severity="critical",type="package_blocked"}' in text
+
+
+def test_scrape_reports_watched_packages_from_the_database(client: TestClient) -> None:
+    from app.db.models import MonitoredPackage
+    from app.db.session import SessionLocal
+
+    with SessionLocal() as db:
+        before = db.query(MonitoredPackage).filter(MonitoredPackage.enabled.is_(True)).count()
+        db.add(MonitoredPackage(id=uuid.uuid4(), ecosystem="pypi", name=f"gauge-{uuid.uuid4().hex[:8]}", enabled=True))
+        db.commit()
+    body = client.get("/metrics").text
+    assert f"monitored_packages {float(before + 1)}" in body
