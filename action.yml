@@ -1,0 +1,118 @@
+# Warden X project scan as a GitHub Action.
+#
+# Runs `warden project scan` against a checked-out repository: manifest hygiene (unpinned
+# dependencies, missing hashes, ambiguous package indexes) and dependency-confusion checks.
+# It reads manifests only; it never installs or executes the project's dependencies, and it needs
+# no Warden server or token.
+#
+# The report is always written as SARIF and, by default, uploaded to GitHub code scanning *before*
+# the gate is enforced, so a failing build still shows its alerts. Uploading requires the calling
+# job to grant `security-events: write`.
+#
+#   permissions:
+#     contents: read
+#     security-events: write
+#   steps:
+#     - uses: actions/checkout@<sha>
+#       with: { persist-credentials: false }
+#     - uses: rakshit-737/warden-supply-chain-firewall@<sha>
+#       with:
+#         path: .
+#         fail-on: high
+
+name: Warden X project scan
+description: Scan dependency manifests for supply-chain hygiene and dependency-confusion risks, with SARIF output.
+author: rakshit-737
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  path:
+    description: Directory whose manifests are scanned (relative to the workspace).
+    required: false
+    default: "."
+  fail-on:
+    description: Lowest finding severity that fails the step (low, medium, high, critical).
+    required: false
+    default: high
+  sarif-file:
+    description: Where the SARIF report is written.
+    required: false
+    default: warden.sarif
+  upload-sarif:
+    description: Upload the report to GitHub code scanning ("true" or "false").
+    required: false
+    default: "true"
+  python-version:
+    description: Python version used to run Warden.
+    required: false
+    default: "3.12"
+
+outputs:
+  sarif-file:
+    description: Path of the SARIF report.
+    value: ${{ inputs.sarif-file }}
+  exit-code:
+    description: Exit code of the scan (0 passed, 2 blocking findings, 3 usage error).
+    value: ${{ steps.scan.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install Warden (isolated virtual environment)
+      shell: bash
+      env:
+        WARDEN_HOME: ${{ github.action_path }}
+      run: |
+        python -m venv "${RUNNER_TEMP}/warden-venv"
+        "${RUNNER_TEMP}/warden-venv/bin/python" -m pip install --quiet --disable-pip-version-check \
+          -r "${WARDEN_HOME}/backend/requirements.txt"
+
+    - name: Scan project manifests
+      id: scan
+      shell: bash
+      env:
+        WARDEN_HOME: ${{ github.action_path }}
+        SCAN_PATH: ${{ inputs.path }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        SARIF_FILE: ${{ inputs.sarif-file }}
+      run: |
+        case "${FAIL_ON}" in low|medium|high|critical) ;; *)
+          echo "::error::fail-on must be one of low, medium, high, critical"; exit 3 ;;
+        esac
+        sarif_path="$(realpath -m "${SARIF_FILE}")"
+        set +e
+        PYTHONPATH="${WARDEN_HOME}/backend" "${RUNNER_TEMP}/warden-venv/bin/python" -m cli.warden_cli \
+          project scan "${SCAN_PATH}" --fail-on "${FAIL_ON}" --format sarif --output "${sarif_path}"
+        code=$?
+        set -e
+        echo "exit-code=${code}" >> "${GITHUB_OUTPUT}"
+        if [ "${code}" -ne 0 ] && [ "${code}" -ne 2 ]; then
+          echo "::error::warden project scan failed with exit code ${code}"
+          exit "${code}"
+        fi
+
+    - name: Upload SARIF to code scanning
+      if: inputs.upload-sarif == 'true'
+      uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+      with:
+        sarif_file: ${{ inputs.sarif-file }}
+        category: warden-project-scan
+
+    - name: Enforce the gate
+      shell: bash
+      env:
+        EXIT_CODE: ${{ steps.scan.outputs.exit-code }}
+        FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        if [ "${EXIT_CODE}" = "2" ]; then
+          echo "::error::Warden found findings at or above '${FAIL_ON}' severity (see the SARIF report)"
+          exit 2
+        fi
+        echo "Warden project scan passed (fail-on=${FAIL_ON})."
