@@ -130,6 +130,8 @@ def test_compose_yaml_tags_are_never_constructed(monkeypatch):
 def test_file_name_detection():
     assert is_dockerfile("backend/Dockerfile") and is_dockerfile("Dockerfile.dev") and is_dockerfile("api.dockerfile")
     assert not is_dockerfile("docs/dockerfiles.md")
+    for source in ("app/containers/dockerfile.py", "docs/dockerfile.md", "Dockerfile.yml"):
+        assert not is_dockerfile(source), source
     assert is_compose_file("compose.yaml") and is_compose_file("docker-compose.prod.yml")
     assert not is_compose_file("config.yml")
 

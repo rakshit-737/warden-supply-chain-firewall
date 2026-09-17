@@ -55,9 +55,18 @@ _ROOT_USERS = frozenset({"root", "0", "0:0", "root:root", "root:0", "0:root"})
 _PLACEHOLDERS = frozenset({"", "changeme", "change-me", "example", "placeholder", "xxx", "none", "null", "dummy"})
 
 
+# "Dockerfile.<variant>" is a Dockerfile; "dockerfile.py" or "dockerfile.md" is source or documentation.
+_NOT_DOCKERFILE_SUFFIXES = frozenset({
+    "py", "pyc", "js", "ts", "tsx", "jsx", "go", "rs", "java", "rb", "sh", "md", "rst", "txt", "json", "yml",
+    "yaml", "toml", "cfg", "ini", "html", "lock", "bak", "orig", "swp",
+})
+
+
 def is_dockerfile(path: str) -> bool:
     name = path.replace("\\", "/").rsplit("/", 1)[-1].lower()
-    return name == "dockerfile" or name.startswith("dockerfile.") or name.endswith(".dockerfile")
+    if name == "dockerfile" or name.endswith(".dockerfile"):
+        return True
+    return name.startswith("dockerfile.") and name.rsplit(".", 1)[-1] not in _NOT_DOCKERFILE_SUFFIXES
 
 
 def is_compose_file(path: str) -> bool:
