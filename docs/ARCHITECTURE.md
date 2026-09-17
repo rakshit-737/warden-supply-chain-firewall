@@ -1,206 +1,150 @@
 # Architecture
 
-## 1. Problem statement
+## 1. The problem
 
-Modern applications are mostly third-party code. A single `pip install` or `npm install`
-can pull hundreds of transitive packages, each of which executes with the full privilege
-of the developer or the CI runner. Attackers exploit this in three recurring ways:
+Installing a dependency runs someone else's code with your privileges. The attacks that matter are
+malicious publishes, typosquats, dependency confusion, and takeovers of packages that were fine
+last week. A vulnerability scanner cannot see any of them, because there is no CVE for a package
+nobody has reported yet.
 
-1. **Malicious publish** — a brand-new package, or a compromised maintainer account, ships
-   code that runs at *install time* (e.g. `setup.py`) to exfiltrate secrets or open a
-   reverse shell.
-2. **Typosquatting** — `reqeusts`, `python3-dateutil`, `crypt` masquerade as popular
-   packages and rely on a developer typo.
-3. **Dependency confusion** — an internal package name is registered on the public index
-   with a higher version so the resolver prefers the attacker's copy.
+Warden answers a different question — *what does this package do, and who published it?* — and keeps
+vulnerability intelligence as a separate dimension rather than folding both into one number.
 
-Traditional **vulnerability scanners cannot see any of this**: there is no CVE for a
-package nobody has reported yet. Warden is a *behavioural* control — it decides whether a
-package is trustworthy from how it is built and what it does, not from a vulnerability
-database.
+## 2. Goals and non-goals
 
-## 2. Design goals & non-goals
+**Goals.** Decide allow / warn / block for a `(ecosystem, name, version)` in seconds. Explain every
+verdict down to the file and line. Be enforceable where it matters (developer machine, CI). Let
+security teams express policy as code. Fail closed: an incomplete analysis is never a clean result.
 
-**Goals**
+**Non-goals.** Not a CVE scanner (it consumes advisories, it does not replace a scanner). Not a
+sandbox detonation platform: nothing analysed is ever executed. Not a registry mirror.
 
-- Decide `ALLOW / WARN / BLOCK` for a `(ecosystem, name, version)` in seconds.
-- Be explainable: every verdict lists the exact signals that drove it.
-- Be enforceable at the two points that matter: the developer's machine (CLI) and CI.
-- Be policy-driven so security teams tune strictness without code changes.
-- Fail *safe and predictable*: analyzer errors degrade to a conservative signal, never a
-  silent `ALLOW`.
-
-**Non-goals**
-
-- Not a SCA/CVE scanner (complementary, not a replacement).
-- Not a sandbox detonation platform — v1 is static analysis only; dynamic sandboxing is a
-  documented future extension (see §9).
-- Not a package registry mirror.
-
-## 3. System overview
+## 3. Pipeline
 
 ```mermaid
-flowchart LR
-    subgraph Clients
-        CLI["warden CLI<br/>(dev + CI gate)"]
-        UI["React Dashboard<br/>(security team)"]
-    end
-
-    subgraph API["FastAPI backend"]
-        direction TB
-        Auth["Auth / RBAC<br/>JWT + argon2"]
-        REST["REST API<br/>+ validation + rate limit"]
-        Engine["Analysis Orchestrator"]
-        Policy["Policy Engine"]
-    end
-
-    subgraph Pipeline["Analysis pipeline"]
-        Fetch["Registry Fetcher<br/>(PyPI JSON + sdist)"]
-        A1["Metadata analyzer"]
-        A2["Static-code analyzer (AST)"]
-        A3["Install-script analyzer"]
-        A4["Typosquat analyzer"]
-        A5["Obfuscation/entropy analyzer"]
-        A6["IOC matcher"]
-        Score["Hybrid scorer<br/>rules + ML"]
-    end
-
-    DB[("PostgreSQL<br/>verdicts, users, policy, audit")]
-    Cache[("Redis<br/>result cache + rate limits")]
-    Model["ML model<br/>(scikit-learn, persisted)"]
-
-    CLI -->|POST /scan| REST
-    UI -->|REST + JWT| REST
-    REST --> Auth
-    REST --> Engine
-    Engine --> Fetch --> A1 & A2 & A3 & A4 & A5 & A6 --> Score
-    Score --> Model
-    Score --> Policy
-    Policy --> DB
-    Engine --> Cache
-    REST --> DB
+flowchart TB
+  REQ["POST /scans"] --> CACHE{"verdict cached?"}
+  CACHE -- hit --> OUT
+  CACHE -- miss --> ACQ["Acquisition<br/>registry metadata + artifact"]
+  ACQ --> EXT["Safe extraction<br/>bounded, hostile-archive guards"]
+  EXT --> AZ["13 analyzers, in parallel<br/>per-analyzer timeout"]
+  AZ --> COR["Correlation<br/>findings → attack chains"]
+  COR --> RISK["Risk engine<br/>dimensions + floors + ML guardrail"]
+  RISK --> POL["Policy engine<br/>confidence-gated rules, exceptions"]
+  POL --> OUT["Verdict, findings, reasons"]
+  OUT --> DB[("PostgreSQL")]
+  OUT --> EV["Security events"]
+  AZ -.optional.-> INTEL["OSV · KEV · EPSS"]
 ```
 
-## 4. Component responsibilities
+### 3.1 Acquisition (`app/analysis/acquisition`, `fetcher.py`)
 
-### 4.1 Registry fetcher (`app/analysis/fetcher.py`)
-Resolves a package against the public PyPI JSON API, selects the release artifact
-(preferring the sdist for source visibility), downloads it into an isolated temp dir with
-strict size/time limits, and extracts it safely (path-traversal-guarded `tar`/`zip`
-extraction). All egress is confined to this component so the rest of the pipeline operates
-on local files only.
+Resolves the release against the registry, selects an artifact (source distribution preferred, wheel
+as fallback), downloads it under a size cap, and verifies the digest the registry published against
+the bytes actually received. A requested version that does not exist is an error: scanning "latest"
+instead would hand back a verdict for a different artifact than the one that will be installed.
 
-### 4.2 Analyzers (`app/analysis/analyzers/`)
-Each analyzer implements a common `Analyzer` protocol and returns a list of typed
-`Signal` objects (`code`, `severity`, `weight`, `message`, `evidence`). Analyzers are pure
-and independent, which makes them individually unit-testable and safe to run concurrently.
+All outbound HTTP goes through one hardened client: HTTPS only, host allowlist checked on **every
+redirect hop**, response size caps, bounded retries with backoff, client-side rate limiting, and
+query strings stripped from anything logged.
 
-| Analyzer | What it detects |
-|----------|-----------------|
-| `metadata` | New-package risk, single-maintainer risk, release-cadence anomalies, missing repo/license, name/homepage mismatch |
-| `static_code` | Dangerous imports (`os`, `subprocess`, `socket`, `ctypes`), `eval`/`exec`/`compile`, dynamic import, network egress, env-var/credential harvesting, filesystem writes to sensitive paths |
-| `install_script` | Code execution inside `setup.py`/`setup.cfg`/PEP 517 build hooks (the classic install-time RCE vector) |
-| `typosquat` | Small edit-distance to a bundled list of the most-downloaded packages, plus homoglyph/keyboard-adjacency checks |
-| `obfuscation` | High-entropy string blobs, `base64`/`marshal`/`zlib` decode-then-exec chains, long single-line payloads |
-| `ioc` | Exact/substring match against a bundled indicator set (URLs, IPs, wallet addresses, known-bad hashes) |
+### 3.2 Safe extraction (`app/analysis/extraction`)
 
-### 4.3 Hybrid scorer (`app/analysis/scoring.py`)
-Two independent scores are computed and fused:
+The input is hostile by definition. Format is detected from magic bytes, not the filename. Every
+member is checked for path traversal, absolute paths, drive letters, control characters, depth and
+length. Symlinks, hardlinks and devices are never followed. Limits cover member count, retained
+bytes, per-file size, retained binary budget, wall-clock, and — importantly — the *declared* size of
+members that are skipped, because skipping a member still decompresses it. That last bound is what
+stops a pax-header or skipped-member decompression bomb.
 
-- **Rule score** — a transparent weighted sum of signal weights, capped and normalised to
-  0–100. Fully explainable and deterministic.
-- **ML score** — a `RandomForestClassifier` produces a calibrated malicious-probability
-  from the numeric feature vector; an `IsolationForest` adds an unsupervised
-  novelty/anomaly component for packages that don't look like anything in the training
-  distribution.
+What survives is a bounded inventory: decoded text files, retained binaries for signature scanning,
+and a per-member record (size, sha256, magic, executable-ness) even for members whose bytes were not
+kept.
 
-The final risk is `max(rule_score, ml_score)` by default (a conservative "either signal
-can raise an alarm" fusion), configurable per deployment. Keeping the two scores separate
-means the dashboard can show *both*, and an operator who distrusts the model can fall back
-to rules-only via policy.
+### 3.3 Analyzers (`app/analysis/analyzers`)
 
-### 4.4 Policy engine (`app/policy/engine.py`)
-Evaluates the verdict against the active `Policy`: score thresholds for `WARN`/`BLOCK`,
-hard capability blocks (e.g. "block anything with install-time network egress"),
-allowlist/denylist, and minimum package age. Produces the final `decision` plus the
-matched rules, so the CLI can print *why* a build was blocked.
+Thirteen analyzers run concurrently, each with its own timeout, each returning `Finding` objects:
+metadata, typosquat, static code, install script, obfuscation, IOC, inventory, secrets, dependency
+confusion, provenance, YARA, Semgrep, vulnerability. They never execute package code and never
+perform I/O beyond their declared needs; the two intelligence-backed ones are skipped in offline
+scans. An analyzer that crashes or times out produces `ANALYZER_ERROR`, which raises risk rather than
+silently shrinking the evidence, and the result is not cached.
 
-### 4.5 API layer (`app/api/`)
-FastAPI with pydantic v2 schemas. Concerns are separated into routers (`auth`, `scans`,
-`policies`, `audit`, `health`). Cross-cutting middleware handles request-ID injection,
-structured access logging, security headers, and a Redis-backed sliding-window rate
-limiter. See `API.md`.
+A finding carries severity **and** confidence separately, the file and line where known, CWE and
+ATT&CK mappings, remediation, and the provenance of the observation. Evidence is sanitised on
+construction: bounded, control characters escaped, secrets redacted.
 
-### 4.6 Frontend (`frontend/`)
-React + TypeScript + Vite + Tailwind. Talks only to the REST API, stores the access token
-in memory (refresh token in an httpOnly cookie), and renders the risk posture dashboard,
-scan detail (signal breakdown + feature contributions), manual scan, policy editor, and
-audit log.
+### 3.4 Correlation (`app/analysis/correlation`)
 
-## 5. Request lifecycle (a scan)
+Individual capabilities are weak evidence; sequences are strong. The correlation engine matches
+findings against chain templates — credential access then exfiltration, install-time droppers,
+obfuscated loaders, persistence implants, typosquat and dependency-confusion payloads, takeover
+behaviour changes — and emits a chain with an ATT&CK tactic per step.
 
-1. CLI/UI sends `POST /api/v1/scans` `{ecosystem, name, version}` with a bearer token.
-2. Auth middleware validates the JWT and loads the caller + role.
-3. The orchestrator checks Redis for a cached verdict keyed by
-   `sha256(ecosystem:name:version:analyzer_version)`. Hit → return immediately.
-4. Miss → fetcher downloads & extracts the artifact under resource limits.
-5. Analyzers run concurrently and emit signals.
-6. Signals are reduced to a numeric feature vector; the hybrid scorer produces
-   `rule_score`, `ml_score`, `risk_score`, `severity`.
-7. The policy engine maps the verdict to a `decision`.
-8. The verdict + signals are persisted, cached, and an audit event is written.
-9. The response returns the decision, scores, and the full signal list.
+Chains built only from capability-grade findings additionally require co-location in one file plus
+install-time or evasion evidence. Without that rule, every SDK that reads credentials in one module
+and makes HTTPS calls in another would look like an exfiltration chain.
 
-## 6. Technology choices & trade-offs
+### 3.5 Risk engine (`app/analysis/risk.py`, `scoring.py`)
 
-| Choice | Why | Trade-off considered |
-|--------|-----|----------------------|
-| **Python / FastAPI** | The analysis and ML core is Python-native (AST, scikit-learn); FastAPI gives async I/O, pydantic validation, and free OpenAPI. | Go is faster for a data-plane agent, but would split the ML core across a process boundary for little gain at this scope. |
-| **PostgreSQL** | Relational verdict/audit data with strong constraints and JSONB for flexible signal payloads. | A document store was rejected — the audit and RBAC data is relational and benefits from foreign keys. |
-| **Redis** | Verdict cache (re-scans are common in CI) and the rate-limiter backend. | In-memory caching would not survive horizontal scale-out. |
-| **scikit-learn** | Right-sized, reproducible, ships a small persisted model; explainable feature importances. | Deep learning is unjustified — the feature space is small and tabular. |
-| **React + Vite + Tailwind** | Fast modern DX, strong typing, responsive without a heavy component framework. | — |
-| **`max(rule, ml)` fusion** | Conservative: neither subsystem can silently suppress the other's alarm. | Can over-warn; mitigated by tunable policy thresholds. |
-| **Static-only analysis in v1** | Deterministic, fast, safe (never executes untrusted code), fully containerisable. | Misses runtime-only behaviour; dynamic sandbox is a documented v2. |
+Separate dimensions, each with its own confidence and contributing findings: behavioural,
+vulnerability, provenance, reputation, dependency, integrity, secret, anomaly, exploitability, and
+blast radius when project context is supplied.
 
-## 7. Security architecture (summary)
+- The behavioural (rule) score weights strong indicators fully and caps ordinary capabilities, so a
+  large legitimate package cannot accumulate its way to critical.
+- Vulnerability risk is computed from CVSS, KEV listing and EPSS, and is `null` — not `0` — when
+  intelligence is unavailable.
+- A deterministic critical finding with high confidence floors the final score at 80.
+- The model can sharpen a verdict but not invent one: below a rule score of 35 it may add at most 25
+  points. This guardrail exists because measurement against real packages showed a synthetic-trained
+  model scoring ordinary libraries as malicious (see `docs/ML_MODEL.md`).
 
-Full detail in `THREAT_MODEL.md`. Highlights:
+### 3.6 Policy engine (`app/policy`)
 
-- **We analyse hostile input by design.** Untrusted archives are extracted with
-  path-traversal guards, size caps, and file-count caps; package code is **never
-  executed** — only parsed. The analyzer process is the intended container isolation
-  boundary.
-- **AuthN**: argon2id password hashing, short-lived JWT access tokens, rotating refresh
-  tokens in httpOnly cookies.
-- **AuthZ**: role-based (`admin` / `analyst` / `viewer`) dependency-injected guards on
-  every mutating route.
-- **Input validation**: pydantic v2 everywhere; package names constrained to the
-  ecosystem's legal grammar before they ever reach the fetcher.
-- **Rate limiting** per identity and per IP.
-- **Auditing**: every auth event, scan, and policy change is written to an append-only
-  audit table.
-- **Secure defaults**: security headers, CORS allowlist, no secrets in code, `.env`-driven
-  config with a fail-closed settings validator.
+Policies are documents (thresholds, deny and warn rules by finding code, category, capability and
+vulnerability, provenance requirements, allowlists, exceptions) validated strictly and identified by
+a hash recorded on every verdict. Rules fire only at or above a configured confidence. Known-malware
+matches, critical attack chains and hash mismatches are non-overridable. Exceptions are scoped,
+time-boxed, justified, and approved by someone other than the requester. Unknown vulnerability
+intelligence warns instead of silently allowing.
 
-## 8. Scalability & operations
+## 4. Platform
 
-- The API is **stateless**; scale horizontally behind a load balancer. Session state lives
-  in Postgres/Redis only.
-- Analysis is CPU-bound and independent per package — the orchestrator is written so the
-  synchronous path can be moved behind a task queue (Celery/RQ) without touching the API
-  contract. The `POST /scans` handler already returns a persisted verdict id, so an async
-  `202 + poll` mode is a drop-in.
-- Verdict caching makes the common CI case (re-scanning an unchanged lockfile) effectively
-  free.
-- Health/readiness endpoints and structured JSON logs make it container-orchestrator
-  friendly.
+- **API** (`app/api`): FastAPI, permission-checked routes, request-id validation, streamed body-size
+  limits, proxy-aware rate limiting, strict security headers, sanitised errors.
+- **Data** (`app/db`): PostgreSQL in production, SQLite for tests, portable column types, Alembic
+  migrations verified against the models and round-tripped on PostgreSQL in CI.
+- **Audit**: every security-relevant action is appended to a sha256 hash chain with a verification
+  endpoint. On PostgreSQL a trigger rejects updates and deletes on the audit table.
+- **Events**: security events are rows first (the durable record) and a Redis stream second (a
+  best-effort notification).
+- **Observability**: Prometheus metrics with bounded labels, structured JSON logs that redact
+  secrets, optional OpenTelemetry spans.
+- **Console** (`frontend/`): React and TypeScript. Dashboard, scans and scan detail, new scan,
+  policies, events, audit with chain verification, exceptions workflow, users, system.
 
-## 9. Roadmap (documented extensions)
+## 5. Supporting engines
 
-1. **npm ecosystem** analyzers (the analyzer protocol is ecosystem-agnostic by design).
-2. **Dynamic sandbox detonation** in a gVisor/Firecracker microVM for install-time
-   behavioural capture.
-3. **Full transitive dependency-tree scanning** with a single aggregate verdict.
-4. **Registry proxy mode** — a PEP 503 simple-index proxy that blocks inline.
-5. **Model feedback loop** — analyst overrides feed a retraining dataset.
+**SBOM** (`app/sbom`) parses requirements files, `pyproject.toml`, `poetry.lock` and `Pipfile.lock`
+with exact line provenance and emits CycloneDX 1.6 or SPDX 2.3, validated against the official
+schemas in tests. **Graph** (`app/graph`) turns an inventory into a dependency graph with depth,
+blast radius, dominators and centrality. Both are libraries today; the project-scanning API that will
+expose them is the next phase.
+
+## 6. Trade-offs
+
+| Decision | Why | Cost |
+|---|---|---|
+| Static analysis only | Deterministic, fast, and safe: the classic payload runs at install time, and "just run it to see" is what the attacker wants | Misses runtime-only behaviour; a sandbox is designed but not built |
+| Separate severity and confidence | Lets policy demand strong evidence before blocking, instead of one blurred number | More to reason about per finding |
+| Separate behavioural and vulnerability risk | "Malicious" and "vulnerable" are different questions with different responses | Two numbers to explain |
+| Bounded ML influence | Measured false positives on real packages | The model contributes less than its synthetic metrics suggest |
+| Fail closed on incomplete analysis | A partial scan must not read as clean | Large packages on slow links can surface as elevated risk |
+| Optional tools degrade gracefully | Warden must work without YARA, Semgrep or gitleaks installed | Coverage varies by deployment, so scans report which layers ran |
+
+## 7. What is not built yet
+
+Project-scanning and package-intelligence APIs, release-to-release behavioural diffing, SARIF output,
+container image scanning, the continuous monitoring worker, the opt-in dynamic sandbox, CLI commands
+beyond `scan` and `gate`, and ecosystems other than PyPI.
