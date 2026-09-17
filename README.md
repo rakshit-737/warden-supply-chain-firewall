@@ -4,8 +4,8 @@
 
 **Decide whether a dependency is safe to install — from what its code does, where it came from, and what is known about it.**
 
-[![PyPI](https://img.shields.io/pypi/v/warden-supply-chain-firewall.svg)](https://pypi.org/project/warden-supply-chain-firewall/)
-[![Python](https://img.shields.io/pypi/pyversions/warden-supply-chain-firewall.svg)](https://pypi.org/project/warden-supply-chain-firewall/)
+[![Release](https://img.shields.io/github/v/release/rakshit-737/warden-supply-chain-security)](https://github.com/rakshit-737/warden-supply-chain-security/releases)
+[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![CI](https://github.com/rakshit-737/warden-supply-chain-security/actions/workflows/ci.yml/badge.svg)](https://github.com/rakshit-737/warden-supply-chain-security/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
@@ -40,20 +40,38 @@ same thing:
 
 ```mermaid
 flowchart LR
-  CLI["warden CLI / CI gate"] --> API
-  UI["Security console"] --> API
+  subgraph Clients
+    CLI["warden CLI"]
+    GHA["GitHub Action<br/>(SARIF upload)"]
+    UI["Security console"]
+  end
   subgraph API["FastAPI backend"]
     direction TB
-    ACQ["Acquisition<br/>PyPI metadata + artifact"] --> EXT["Safe extraction<br/>(hostile archives)"]
-    EXT --> AZ["14 analyzers in parallel"]
-    AZ --> COR["Attack-chain correlation"]
-    COR --> RISK["Risk engine<br/>(separate dimensions)"]
-    RISK --> POL["Policy engine<br/>(policy-as-code)"]
+    subgraph PKG["Package scan"]
+      direction TB
+      ACQ["Acquisition<br/>PyPI metadata + artifact"] --> EXT["Safe extraction<br/>(hostile archives)"]
+      EXT --> AZ["14 analyzers in parallel"]
+      AZ --> COR["Attack-chain correlation"]
+      COR --> RISK["Risk engine<br/>(separate dimensions)"]
+      RISK --> POL["Policy engine<br/>(policy-as-code)"]
+    end
+    PROJ["Project scans<br/>manifests · SBOM · graph"]
+    DIFF["Release diffs"]
+    CTR["Container images<br/>(offline + optional Trivy)"]
+    REP["Reports<br/>SARIF · Markdown · HTML"]
   end
+  WORKER["Monitoring worker"]
+  CLI --> API
+  GHA --> PROJ
+  UI --> API
   POL --> V["allow / warn / block"]
-  API --> DB[("PostgreSQL")]
-  API --> RC[("Redis")]
+  DIFF --> PKG
+  WORKER --> DIFF
+  API --> DB[("PostgreSQL<br/>+ audit chain")]
+  WORKER --> DB
+  API --> RC[("Redis<br/>cache · event stream")]
   AZ -.-> INTEL["OSV · CISA KEV · FIRST EPSS"]
+  API -.-> PROM["Prometheus · Grafana"]
 ```
 
 For a `(name, version)` Warden fetches the real distribution, extracts it under hostile-archive
