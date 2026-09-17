@@ -103,6 +103,7 @@ def test_submitted_dockerfiles_are_linted(client, admin_token):
     codes = {f["code"] for f in scan["summary"]["findings"]}
     assert {"DOCKERFILE_CURL_PIPE_SHELL", "DOCKERFILE_ROOT_USER", "DOCKERFILE_UNPINNED_BASE"} <= codes
     assert scan["decision"] == "block"
+    assert not any("not supported manifests" in w for w in scan["summary"]["warnings"])
 
 
 def test_clean_manifest_allows(client, admin_token):

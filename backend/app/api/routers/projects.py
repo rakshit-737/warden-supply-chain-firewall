@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 from app import __version__
 from app.analysis.depconf.project import project_confusion_findings
 from app.api.deps import require_permission
+from app.containers.dockerfile import is_compose_file, is_dockerfile
 from app.containers.dockerfile import lint_files as lint_container_files
 from app.core.errors import NotFoundError, WardenError
 from app.core.permissions import Permission
@@ -144,7 +145,9 @@ def scan_project(
 ) -> ProjectScan:
     project = _project(db, project_id)
     environment = payload.environment or DEFAULT_ENVIRONMENT
-    inventory = parse_project(payload.files, project.name)
+    container_files = {path for path in payload.files if is_dockerfile(path) or is_compose_file(path)}
+    # Container files are linted, not parsed as dependency manifests (the parser would report them as ignored).
+    inventory = parse_project({k: v for k, v in payload.files.items() if k not in container_files}, project.name)
     container_findings = lint_container_files(payload.files)
     if not inventory.manifests and not container_findings:
         raise WardenError("No supported manifest found in the submitted files", code="validation_error",
