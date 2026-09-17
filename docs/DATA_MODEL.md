@@ -1,92 +1,54 @@
 # Data Model
 
-PostgreSQL. Managed via SQLAlchemy 2.0 (typed, declarative) and Alembic migrations.
-JSONB is used where a column stores a variable-shape but query-secondary payload (signal
-evidence, feature vectors, policy rules).
+PostgreSQL in production, SQLite for the test suite. Portable column types (`GUID`, `PortableJSON`)
+map to native `UUID`/`JSONB` on PostgreSQL. The schema is defined in `backend/app/db/models.py` and
+created by Alembic migrations `0001_initial` → `0002_warden_x` → `0003_scan_environment`. A test
+upgrades a fresh database to head and compares it with the models; CI also runs
+upgrade → downgrade → upgrade against a real PostgreSQL 16.
+
+## Entities in use today
 
 ```mermaid
 erDiagram
-    USERS ||--o{ SCANS : requests
-    USERS ||--o{ AUDIT_EVENTS : actor
-    USERS ||--o{ REFRESH_TOKENS : owns
-    POLICIES ||--o{ SCANS : evaluated_by
-    SCANS ||--o{ SIGNALS : produces
-
-    USERS {
-        uuid id PK
-        string email UK
-        string password_hash
-        enum role  "admin|analyst|viewer"
-        bool is_active
-        timestamptz created_at
-    }
-    REFRESH_TOKENS {
-        uuid id PK
-        uuid user_id FK
-        string token_hash UK
-        timestamptz expires_at
-        bool revoked
-    }
-    POLICIES {
-        uuid id PK
-        string name
-        bool is_active
-        int warn_threshold
-        int block_threshold
-        int min_package_age_days
-        jsonb blocked_capabilities
-        jsonb allowlist
-        jsonb denylist
-        timestamptz updated_at
-    }
-    SCANS {
-        uuid id PK
-        uuid requested_by FK
-        uuid policy_id FK
-        string ecosystem
-        string package_name
-        string version
-        int rule_score
-        int ml_score
-        int risk_score
-        enum severity  "info|low|medium|high|critical"
-        enum decision  "allow|warn|block"
-        jsonb feature_vector
-        string analyzer_version
-        int duration_ms
-        timestamptz created_at
-    }
-    SIGNALS {
-        uuid id PK
-        uuid scan_id FK
-        string code
-        enum severity
-        float weight
-        string message
-        jsonb evidence
-    }
-    AUDIT_EVENTS {
-        uuid id PK
-        uuid actor_id FK
-        string action
-        string target_type
-        string target_id
-        jsonb metadata
-        string request_id
-        timestamptz created_at
-    }
+  USERS ||--o{ REFRESH_TOKENS : holds
+  USERS ||--o{ SCANS : requests
+  USERS ||--o{ AUDIT_EVENTS : performs
+  USERS ||--o{ POLICY_EXCEPTIONS : "requests / decides"
+  POLICIES ||--o{ SCANS : evaluates
+  POLICIES ||--o{ POLICY_EXCEPTIONS : scopes
+  SCANS ||--o{ SIGNALS : "has findings"
+  SCANS ||--o{ SECURITY_EVENTS : raises
 ```
 
-## Notes & rationale
+| Table | Purpose | Notes |
+|---|---|---|
+| `users` | Accounts | Role stored as a string: `admin`, `security_analyst`, `developer`, `auditor`, `read_only`. The v1 names `analyst` and `viewer` were migrated. |
+| `refresh_tokens` | Opaque refresh tokens | Only a sha256 of the token is stored. A revoked token presented again revokes the user's whole family. |
+| `policies` | Enforcement policies | Legacy columns (thresholds, capability lists, allow/deny lists) plus an optional policy-as-code `document`, an `environment`, and a `version`. One active policy per environment. |
+| `policy_exceptions` | Time-boxed waivers | Package (normalised), optional version range, optional code/category scope, environment, justification, requester, approver, status, expiry. Expiry is evaluated when read; the approver must differ from the requester. |
+| `scans` | One verdict per package version, analyzer version and environment | Scores (final, rule, ML, malicious, vulnerability), severity, decision, the risk breakdown, attack chains, analyzer runs, package intelligence, provenance, vulnerabilities, intelligence status, model version, policy reasons, feature vector. |
+| `signals` | Findings of a scan | v1 columns plus finding id, confidence, category, title, analyzer and version, capability, location, CWE, ATT&CK, remediation, references, provenance, related findings. Evidence is already sanitised and redacted when stored. |
+| `audit_events` | Append-only audit trail | `seq`, `prev_hash` and `event_hash` form a sha256 chain over a canonical encoding of each event. On PostgreSQL a trigger rejects `UPDATE` and `DELETE`; appends take an advisory lock so the chain cannot fork. |
+| `security_events` | Operational security events | Type, severity, title, package and version, optional scan and project, sanitised details, acknowledgement. The row is the durable record; a Redis stream carries a best-effort copy. |
 
-- **UUID primary keys** avoid enumerable ids in the API surface.
-- **`SCANS.feature_vector` (JSONB)** stores the exact numeric features fed to the model,
-  which makes verdicts reproducible and lets the dashboard show feature contributions.
-- **`SIGNALS`** is a child table rather than a JSON blob on the scan so signals are
-  independently queryable (e.g. "how many packages this month tripped `INSTALL_NETWORK`").
-- **`REFRESH_TOKENS.token_hash`** stores only a hash — a database leak does not yield
-  usable refresh tokens.
-- **`AUDIT_EVENTS`** is append-only by convention (no update/delete routes) and carries
-  the `request_id` so a verdict can be traced to the exact HTTP request.
-- **`analyzer_version`** is part of the cache key and stored on every scan so historical
-  verdicts remain interpretable after analyzer logic changes.
+## Tables created for the next phase
+
+These exist in the schema so the next features do not need another disruptive migration, but no
+route writes to them yet: `projects`, `project_scans`, `project_components`, `dependency_edges`
+(project scanning, SBOM and dependency graph), `vulnerability_records` (intelligence cache),
+`monitored_packages` (continuous monitoring), `release_diffs` (behavioural diffing),
+`container_scans` (image scanning), `scan_jobs` (queued work).
+
+## Design notes
+
+- **Findings are denormalised onto the scan** as JSON as well as stored in `signals`: the JSON
+  keeps a scan's explanation self-contained and immutable, while `signals` supports aggregation
+  (the dashboard's most frequent findings).
+- **Idempotent verdicts.** A rescan of the same package version under the same analyzer version and
+  environment updates that row instead of piling up duplicates; changing the analyzer version keeps
+  history separate.
+- **Nothing sensitive at rest.** Passwords are argon2id hashes, refresh tokens are hashes, and
+  secrets found inside packages are stored only as redacted previews and keyed fingerprints.
+- **Indexes** cover the lookups the API makes: package name and creation time on scans, decision
+  and risk, finding code and category, event type, severity and time, audit actor and action,
+  exception package and expiry.
