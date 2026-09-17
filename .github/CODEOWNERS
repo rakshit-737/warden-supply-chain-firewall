@@ -1,0 +1,7 @@
+# Review is required from the maintainer for every change; security-sensitive paths are listed
+# explicitly so they stay owned even if the default is changed.
+*                                   @rakshit-737
+/backend/app/core/                  @rakshit-737
+/backend/app/analysis/extraction/   @rakshit-737
+/.github/workflows/                 @rakshit-737
+/action.yml                         @rakshit-737
