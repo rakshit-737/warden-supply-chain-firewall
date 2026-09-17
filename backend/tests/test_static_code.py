@@ -144,3 +144,25 @@ def test_deep_concatenation_is_bounded():
     expr = " + ".join(["'e'"] * 5000)
     src = f"getattr(__builtins__, {expr})\n"
     analyzer.analyze(_ctx(src))  # must return without folding thousands of parts or recursing
+
+
+def test_socket_wired_to_stdio_is_a_reverse_shell():
+    src = (
+        "import socket, os, subprocess as sp\n"
+        "s = socket.socket()\n"
+        "os.dup2(s.fileno(), 0)\nos.dup2(s.fileno(), 1)\n"
+        "sp.call(['/bin/sh', '-i'])\n"
+    )
+    findings = {f.code: f for f in analyzer.analyze(_ctx(src))}
+    shell = findings[Code.REVERSE_SHELL]
+    assert shell.severity.value == "critical" and shell.location.line == 3
+    assert shell.capability == "shell_invocation"
+
+
+@pytest.mark.parametrize("src", [
+    "import os, pty\npty.spawn('/bin/bash')\n",  # terminal tooling without a socket
+    "import os\nos.dup2(log.fileno(), 2)\n",  # redirecting stderr to a log file
+    "import socket, os\nos.dup2(3, 0)\n",  # descriptor number, not a socket's fileno()
+])
+def test_stdio_redirection_alone_is_not_a_reverse_shell(src):
+    assert Code.REVERSE_SHELL not in _codes(analyzer.analyze(_ctx(src)))

@@ -243,6 +243,10 @@ _r("FS_SENSITIVE", C.CREDENTIAL_ACCESS, D.BEHAVIORAL, "Accesses credential / key
 _r("BROWSER_CREDENTIAL_ACCESS", C.CREDENTIAL_ACCESS, D.BEHAVIORAL, "Accesses browser credential stores",
    "Libraries have no legitimate reason to read browser cookie/login databases; do not install.",
    cwe=("CWE-200", "CWE-506"), attack=("T1555.003",), primary=True)
+_r("REVERSE_SHELL", C.MALICIOUS_BEHAVIOR, D.BEHAVIORAL, "Reverse shell",
+   "A socket wired to the standard streams of a shell hands a remote party interactive control; remove the "
+   "package and treat the host as compromised if it was installed.",
+   cwe=("CWE-506",), attack=("T1059.004", "T1071.001"), primary=True)
 _r("PERSISTENCE", C.MALICIOUS_BEHAVIOR, D.BEHAVIORAL, "Persistence mechanism",
    "Writing cron jobs, services, autostart entries or shell profiles from a package is malicious persistence.",
    cwe=("CWE-506",), attack=("T1053.003", "T1543.002", "T1547.001", "T1546.004"), primary=True)

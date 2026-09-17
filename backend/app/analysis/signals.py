@@ -40,6 +40,7 @@ class Code:
     PERSISTENCE = "PERSISTENCE"
     SUSPICIOUS_DOWNLOAD = "SUSPICIOUS_DOWNLOAD"
     DNS_EXFILTRATION = "DNS_EXFILTRATION"
+    REVERSE_SHELL = "REVERSE_SHELL"
     DANGEROUS_IMPORT = "DANGEROUS_IMPORT"
     # --- install-time execution vectors ----------------------------------------------
     PTH_STARTUP_HOOK = "PTH_STARTUP_HOOK"

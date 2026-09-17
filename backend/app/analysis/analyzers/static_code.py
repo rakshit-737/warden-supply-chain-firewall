@@ -34,7 +34,7 @@ from app.analysis.analyzers.base import BaseAnalyzer, PackageContext
 from app.analysis.findings import Location
 from app.analysis.signals import Capability, Code, Severity, Signal
 
-ANALYZER_VERSION = "1.2.0"
+ANALYZER_VERSION = "1.3.0"
 
 # Modules whose mere import is a meaningful risk indicator.
 DANGEROUS_IMPORTS = {
@@ -82,6 +82,7 @@ CONFIDENCE = {
     Code.FS_SENSITIVE: 0.7,
     Code.DANGEROUS_IMPORT: 0.4,
     Code.UNPARSEABLE: 0.6,
+    Code.REVERSE_SHELL: 0.9,
 }
 
 MAX_EVIDENCE_LOCATIONS = 10
@@ -150,6 +151,8 @@ class _Walker:
         self.subprocess = 0
         self.env_harvest = False
         self.fs_sensitive = False
+        # os.dup2(<sock>.fileno(), 0|1|2) or pty.spawn(...): standard streams handed to something else.
+        self.stdio_redirect = 0
         self.evidence: dict[str, list[str]] = {}
         self.locations = LocationCollector()
         self.file_index = 0
@@ -241,6 +244,7 @@ class _Walker:
                 self._note("network_calls", f"socket.{attr}")
                 self._loc(Code.NETWORK_EGRESS, node)
         self._check_environment_dump(node)
+        self._check_stdio_redirect(node)
         # Environment variable harvesting: os.environ[...] / os.getenv(...)
         self._check_env_access(node)
 
@@ -255,6 +259,24 @@ class _Walker:
                 if key in SENSITIVE_ENV:
                     self._note("sensitive_env", key)
                     self._loc(Code.ENV_HARVEST, node)
+
+    def _check_stdio_redirect(self, node: ast.Call) -> None:
+        func = node.func
+        if not isinstance(func, ast.Attribute):
+            return
+        root = self._root(func)
+        if root == "os" and func.attr == "dup2" and len(node.args) == 2:
+            source, target = node.args
+            if (isinstance(target, ast.Constant) and target.value in (0, 1, 2)
+                    and isinstance(source, ast.Call) and isinstance(source.func, ast.Attribute)
+                    and source.func.attr == "fileno"):
+                self.stdio_redirect += 1
+                self._note("stdio_redirect", f"os.dup2(...fileno(), {target.value})")
+                self._loc(Code.REVERSE_SHELL, node)
+        elif root == "pty" and func.attr == "spawn":
+            self.stdio_redirect += 1
+            self._note("stdio_redirect", "pty.spawn")
+            self._loc(Code.REVERSE_SHELL, node)
 
     def _environment_dump(self, node: ast.AST) -> None:
         self.env_harvest = True
@@ -474,6 +496,14 @@ class StaticCodeAnalyzer(BaseAnalyzer):
                  {"env": agg.evidence.get("env_access", []),
                   "sensitive": agg.evidence.get("sensitive_env", [])},
                  capability=Capability.ENV_HARVEST)
+        # Standard streams redirected onto a socket (or a pty spawned) in a package that also opens
+        # sockets: the shape of an interactive reverse shell. Terminal emulators use pty without a
+        # socket, and servers use sockets without handing them to stdio, so both are required.
+        if agg.stdio_redirect and "socket" in agg.imports:
+            emit(Code.REVERSE_SHELL, Severity.critical, 12.0,
+                 "Connects a socket to the standard streams of a process (reverse shell)",
+                 {"redirects": agg.evidence.get("stdio_redirect", [])},
+                 capability=Capability.SHELL)
         if agg.fs_sensitive:
             emit(Code.FS_SENSITIVE, Severity.high, 5.0,
                  "References sensitive filesystem paths (keys/credentials)",
