@@ -106,7 +106,8 @@ def resolve_transitive(
 
 
 def _resolvable(component: Component) -> bool:
-    return bool(component.version and component.purl) and component.resolution in _RESOLVABLE
+    return (component.ecosystem == "pypi" and bool(component.version and component.purl)
+            and component.resolution in _RESOLVABLE)
 
 
 class PyPIResolver:

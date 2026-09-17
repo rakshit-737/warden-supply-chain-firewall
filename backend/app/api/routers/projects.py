@@ -121,7 +121,8 @@ def _canonical_sql(column: Any) -> Any:
 
 
 def _stored_verdicts(db: Session, inventory: Any, environment: str) -> dict[str, Scan]:
-    wanted = {(c.normalized_name, c.version): c.bom_ref for c in inventory.components if c.version}
+    wanted = {(c.normalized_name, c.version): c.bom_ref for c in inventory.components
+              if c.version and c.ecosystem == "pypi"}
     if not wanted:
         return {}
     names = sorted({name for name, _ in wanted})
@@ -292,6 +293,7 @@ def _inventory_from_row(row: ProjectScan) -> Any:
     for c in row.components:
         inventory.components.append(Component(
             bom_ref=c.bom_ref, name=c.name, normalized_name=c.name.lower(), version=c.version, purl=c.purl,
+            ecosystem="npm" if (c.purl or c.bom_ref).startswith("pkg:npm/") else "pypi",
             direct=c.direct, scope=c.scope or "required", hashes=dict(c.hashes or {}),
             licenses=list(c.licenses or []), declared_at=list(c.declared_at or []),
             resolution=c.resolution or "unresolved", depth=c.depth, introduced_by=list(c.introduced_by or []),

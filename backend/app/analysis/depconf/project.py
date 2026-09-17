@@ -389,6 +389,8 @@ def project_confusion_findings(
 
     matched: list[tuple[Component, str, NamespaceMatch]] = []
     for component in sorted(inventory.components, key=lambda c: c.bom_ref):
+        if component.ecosystem != "pypi":
+            continue  # private namespaces and index classification are PyPI concepts
         canonical = canonical_name(component.normalized_name) or canonical_name(component.name)
         match = namespaces.match(canonical) if canonical else None
         if match is not None:

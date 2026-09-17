@@ -32,6 +32,7 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.sbom.npm import is_npm_manifest
 from app.sbom.parsers import manifest_type
 
 log = get_logger("warden.sbom.discover")
@@ -102,7 +103,7 @@ def discover_manifests(
                 subdirs.append((entry.path, parts, depth + 1))
                 continue
             rel = "/".join(parts)
-            if manifest_type(rel) is None:
+            if manifest_type(rel) is None and is_npm_manifest(rel) is None:
                 continue
             if len(found) >= max_files:
                 notes.append(f"stopped after {max_files} manifest files")

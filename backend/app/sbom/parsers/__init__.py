@@ -65,6 +65,7 @@ from app.sbom.models import (
     make_bom_ref,
     make_purl,
 )
+from app.sbom.npm import is_npm_manifest, parse_npm
 
 # --- manifest types ---------------------------------------------------------------------
 REQUIREMENTS = "requirements"
@@ -803,11 +804,50 @@ def parse_project(files: Mapping[str, bytes | str], project_name: str = "project
                          max_len=120)
     inventory = ProjectInventory(project_name=name, root_ref=project_root_ref(name))
     try:
-        _Builder(inventory).build(files)
+        python_files, npm_files = _split_npm(files)
+        _Builder(inventory).build(python_files)
+        if npm_files:
+            _merge_npm(inventory, npm_files)
     except Exception as exc:  # fail soft: a parser bug must not take down a project scan
         inventory.components, inventory.edges, inventory.dependencies = [], [], []
         warn(inventory.warnings, f"project manifest parsing aborted ({type(exc).__name__}); inventory is incomplete")
     return inventory
+
+
+def _split_npm(files: Mapping[str, bytes | str]) -> tuple[Mapping, dict]:
+    if not isinstance(files, Mapping):
+        return files, {}
+    python_files: dict = {}
+    npm_files: dict = {}
+    for key, value in files.items():
+        nk = normalize_path(key) if isinstance(key, str) else None
+        if nk and is_npm_manifest(nk):
+            if sanitize_text(nk, max_len=512) == nk:
+                npm_files.setdefault(nk, value)
+            continue
+        python_files[key] = value
+    return python_files, npm_files
+
+
+def _merge_npm(inv: ProjectInventory, files: Mapping[str, bytes | str]) -> None:
+    """Add npm components to an inventory built from the Python manifests, then recompute the graph."""
+    result = parse_npm(files, inv.root_ref)
+    explicit: dict[str, str | None] = {c.bom_ref: c.scope for c in inv.components}
+    explicit.update(result.explicit_scope)
+    room = max(0, settings.MAX_PROJECT_COMPONENTS - len(inv.components))
+    added = result.components[:room]
+    if len(result.components) > room:
+        result.warnings.append(
+            f"npm components truncated to MAX_PROJECT_COMPONENTS ({settings.MAX_PROJECT_COMPONENTS})")
+    kept = {c.bom_ref for c in inv.components} | {c.bom_ref for c in added}
+    inv.components = sorted([*inv.components, *added], key=lambda c: c.bom_ref)
+    edges = [e for e in result.edges if e.child in kept and (e.parent == inv.root_ref or e.parent in kept)]
+    inv.edges = sorted([*inv.edges, *edges], key=lambda e: (e.parent, e.child))
+    inv.manifests = sorted([*inv.manifests, *result.manifests], key=lambda m: m["file"])
+    inv.dependencies = [*inv.dependencies, *result.declarations]
+    order = compute_graph_metadata(inv)
+    propagate_scope(inv, explicit, order)
+    inv.warnings = bounded_warnings(inv.warnings + [sanitize_text(w, max_len=300) for w in result.warnings])
 
 
 class _Builder:
