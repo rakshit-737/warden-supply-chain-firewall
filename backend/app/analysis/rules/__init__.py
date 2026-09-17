@@ -299,7 +299,8 @@ def _tokenize(text: str) -> list[_Token]:
             continue
         if ch in "$#@!":
             match = _STRING_REF_RE.match(text, i)
-            assert match is not None  # the class always matches one character
+            if match is None:  # the class always matches one character; never rely on assert here
+                raise RuleValidationError([f"line {line}: unparseable string reference"])
             tokens.append(_Token("strref", match.group(0), line))
             i = match.end()
             continue
@@ -545,7 +546,9 @@ def validate_meta(meta: Mapping[str, object], *, name: str, namespace: str, rule
             problems.append(f"{where}: unknown meta keys {_show(unknown_keys)} (packaged rules use a fixed schema)")
     if problems:
         raise RuleValidationError(problems)
-    assert rule_id and version and author and date and description and severity and reference and false_positives
+    required = (rule_id, version, author, date, description, severity, reference, false_positives)
+    if not all(required):  # validated above; checked explicitly because asserts vanish under -O
+        raise RuleValidationError([f"{where}: incomplete metadata"])
     return YaraRuleMeta(
         rule_id=rule_id, name=name, namespace=namespace, ruleset=ruleset, version=version, author=author,
         date=date, description=description, severity=severity, confidence=confidence, attack=attack,

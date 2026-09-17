@@ -204,7 +204,7 @@ _FAMILY = {
     "gcp_private_key_field": "private_key",
     "github_fine_grained_pat": "github_token",
     "database_url": "url_credentials",
-    "bearer_token": "http_authorization",
+    "bearer_token": "http_authorization",  # nosec B105 - detector category name, not a credential
     "authorization_header": "http_authorization",
     "auth_scheme_credentials": "http_authorization",
 }
@@ -277,7 +277,7 @@ _DB_SCHEMES = frozenset({
     "stomp", "ldap", "ldaps", "sftp", "ftp", "ftps",
 })
 _LOCAL_HOSTS = frozenset({
-    "localhost", "127.0.0.1", "0.0.0.0", "[::1]", "host.docker.internal", "db", "database", "postgres", "mysql",
+    "localhost", "127.0.0.1", "0.0.0.0", "[::1]",  # nosec B104 - hosts classified as local; nothing binds "host.docker.internal", "db", "database", "postgres", "mysql",
     "redis", "rabbitmq", "mongo", "mongodb", "host", "hostname", "server", "your-host", "yourhost",
 })
 _LOCAL_HOST_SUFFIXES = (".local", ".localhost", ".example", ".test", ".invalid", "example.com", "example.org",
