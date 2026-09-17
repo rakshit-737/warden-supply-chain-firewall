@@ -18,8 +18,12 @@ import threading
 import time
 from pathlib import Path
 
+from sqlalchemy import func, select
+
+from app.core import metrics
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
+from app.db.models import MonitoredPackage
 from app.db.session import SessionLocal
 from app.monitoring.service import run_due
 
@@ -46,6 +50,8 @@ def touch_heartbeat(path: Path | None = None) -> None:
 def run_cycle() -> int:
     with SessionLocal() as db:
         outcomes = run_due(db)
+        enabled = db.scalar(select(func.count(MonitoredPackage.id)).where(MonitoredPackage.enabled.is_(True)))
+        metrics.set_monitored_packages(enabled or 0)
     for outcome in outcomes:
         log.info("monitor_check", package=outcome.package, status=outcome.status, version=outcome.version)
     return len(outcomes)
