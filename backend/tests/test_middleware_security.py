@@ -637,8 +637,13 @@ def test_hsts_only_in_production(client: TestClient, monkeypatch: pytest.MonkeyP
     assert client.get("/api/v1/health/live").headers["strict-transport-security"] == HSTS_VALUE
 
 
+def has_source(directives: dict[str, list[str]], name: str, source: str) -> bool:
+    """Exact match of one CSP source token in one directive."""
+    return any(token == source for token in directives.get(name, []))
+
+
 def inline_script_hashes(html: str) -> set[str]:
-    bodies = [b for b in re.findall(r"<script>(.*?)</script>", html, re.DOTALL) if b.strip()]
+    bodies = [b for b in re.findall(r"<script>(.*?)</script\b[^>]*>", html, re.DOTALL | re.IGNORECASE) if b.strip()]
     return {"'sha256-" + base64.b64encode(hashlib.sha256(b.encode()).digest()).decode() + "'" for b in bodies}
 
 
@@ -648,10 +653,10 @@ def test_swagger_ui_csp_allows_its_assets_without_unsafe_inline_scripts(client: 
     d = csp_directives(response.headers["content-security-policy"])
     hashes = inline_script_hashes(response.text)
     assert hashes and hashes <= set(d["script-src"])
-    assert "https://cdn.jsdelivr.net" in d["script-src"] and "https://cdn.jsdelivr.net" in d["style-src"]
+    assert has_source(d, "script-src", "https://cdn.jsdelivr.net") and has_source(d, "style-src", "https://cdn.jsdelivr.net")
     assert "'unsafe-inline'" not in d["script-src"] and "'unsafe-eval'" not in d["script-src"]
     assert d["default-src"] == ["'none'"] and d["frame-ancestors"] == ["'none'"] and d["object-src"] == ["'none'"]
-    assert "https://fastapi.tiangolo.com" in d["img-src"]
+    assert has_source(d, "img-src", "https://fastapi.tiangolo.com")
     assert response.headers["x-frame-options"] == "DENY"
 
     redirect = client.get("/docs/oauth2-redirect")
@@ -661,8 +666,8 @@ def test_swagger_ui_csp_allows_its_assets_without_unsafe_inline_scripts(client: 
 
 def test_redoc_csp_allows_fonts_and_worker(client: TestClient) -> None:
     d = csp_directives(client.get("/redoc").headers["content-security-policy"])
-    assert "https://cdn.jsdelivr.net" in d["script-src"]
-    assert "https://fonts.googleapis.com" in d["style-src"] and "https://fonts.gstatic.com" in d["font-src"]
+    assert has_source(d, "script-src", "https://cdn.jsdelivr.net")
+    assert has_source(d, "style-src", "https://fonts.googleapis.com") and has_source(d, "font-src", "https://fonts.gstatic.com")
     assert d["worker-src"] == ["blob:"]
 
 
@@ -672,7 +677,7 @@ def test_docs_csp_ignores_non_https_and_hostile_sources() -> None:
             '<link rel="icon" href="https://icons.example/i.png"><script>   </script>')
     d = csp_directives(docs_csp(html))
     assert d["script-src"] == ["'self'", "https://cdn.example.org:8443"]
-    assert "https://icons.example" in d["img-src"]
+    assert has_source(d, "img-src", "https://icons.example")
     assert not any("evil" in src for values in d.values() for src in values)
 
 

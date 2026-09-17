@@ -132,7 +132,7 @@ def apply_security_headers(headers: MutableHeaders, path: str) -> None:
         headers["Strict-Transport-Security"] = HSTS_VALUE
 
 
-_SCRIPT_RE = re.compile(r"<script(?P<attrs>[^>]*)>(?P<body>.*?)</script\s*>", re.IGNORECASE | re.DOTALL)
+_SCRIPT_RE = re.compile(r"<script(?P<attrs>[^>]*)>(?P<body>.*?)</script\b[^>]*>", re.IGNORECASE | re.DOTALL)
 _LINK_RE = re.compile(r"<link\b(?P<attrs>[^>]*)>", re.IGNORECASE)
 _SRC_RE = re.compile(r"""\bsrc\s*=\s*["']?(?P<url>[^"'\s>]+)""", re.IGNORECASE)
 _HREF_RE = re.compile(r"""\bhref\s*=\s*["']?(?P<url>[^"'\s>]+)""", re.IGNORECASE)
