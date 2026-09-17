@@ -483,3 +483,12 @@ def test_redis_incr_sets_ttl_only_on_creation_and_xadd_trims() -> None:
     assert redis.xadds == [("warden:events", {"type": "PACKAGE_BLOCKED", "score": "97"}, 500, True)]
     assert c.xadd("warden:events", {}) is False
     assert c.xlen("warden:events") == 1
+
+
+def test_known_series_exist_at_zero_after_app_start():
+    create_app()
+    text = metrics.render_latest()[0].decode()
+    assert 'scans_total{decision="block",ecosystem="pypi"}' in text
+    assert 'policy_decisions_total{decision="warn",environment="production"}' in text
+    assert 'analyzer_runs_total{analyzer="install_vectors",status="timeout"}' in text
+    assert 'security_events_total{severity="critical",type="package_blocked"}' in text

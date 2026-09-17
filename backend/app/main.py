@@ -118,6 +118,7 @@ def _warn_on_insecure_posture() -> None:
 async def lifespan(_: FastAPI):
     configure_logging(settings.DEBUG)
     install_stdlib_log_redaction()
+    _preinitialize_metrics()
     # On SQLite (dev/test) we create tables directly; production uses Alembic migrations.
     if settings.is_sqlite:
         Base.metadata.create_all(bind=engine)
@@ -183,6 +184,15 @@ def _install_metrics_endpoint(app: FastAPI) -> None:
 
 
 # --------------------------------------------------------------------------- factory
+def _preinitialize_metrics() -> None:
+    from app.analysis import analyzers as analyzer_registry
+    from app.analysis.orchestrator import CORRELATION_STAGE_NAME
+    from app.events.types import EventType
+
+    names = [str(a.name) for a in analyzer_registry.all_analyzers()] + [CORRELATION_STAGE_NAME]
+    metrics.preinitialize(analyzers=names, event_types=[e.value for e in EventType])
+
+
 def create_app() -> FastAPI:
     configure_logging(settings.DEBUG)
     install_stdlib_log_redaction()

@@ -270,6 +270,36 @@ def set_tool_available(tool: str, available: bool) -> None:
     TOOL_AVAILABLE.labels(_tool_label(tool)).set(1 if available else 0)
 
 
+_SCAN_ECOSYSTEMS = ("pypi",)
+_PRE_CACHES = ("verdict",)
+
+
+@_never_raise
+def preinitialize(analyzers: Iterable[str] = (), event_types: Iterable[str] = ()) -> None:
+    """Create the known label combinations with value 0.
+
+    Without this a counter series appears only after its first increment, so dashboards and alert
+    expressions such as ``rate(scans_total{decision="block"}[5m])`` see "no data" instead of 0 on a
+    fresh process. Only fixed, enumerated values are used, so cardinality stays bounded.
+    """
+    for decision in ("allow", "warn", "block"):
+        for ecosystem in _SCAN_ECOSYSTEMS:
+            SCANS.labels(decision, ecosystem)
+        for environment in ("development", "staging", "production"):
+            POLICY_DECISIONS.labels(decision, environment)
+    for cache in _PRE_CACHES:
+        for result in sorted(_CACHE_RESULTS):
+            CACHE_REQUESTS.labels(_cache_label(cache), result)
+    for analyzer in analyzers:
+        label = _analyzer_label(analyzer)
+        for status in sorted(_ANALYZER_STATUSES):
+            ANALYZER_RUNS.labels(label, status)
+    for event_type in event_types:
+        label = _event_type_label(event_type)
+        for severity in sorted(_SEVERITIES):
+            SECURITY_EVENTS.labels(label, severity)
+
+
 @contextmanager
 def time_ml() -> Iterator[None]:
     """Time an ML inference block into ``ml_inference_seconds`` (recorded even if it raises)."""
