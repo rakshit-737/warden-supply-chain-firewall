@@ -1,6 +1,6 @@
 site_name: Warden
 site_description: Software supply-chain security — decide whether a dependency is safe to install, without running it.
-site_url: https://rakshit-737.github.io/warden-supply-chain-security/
+site_url: https://rakshit-737.github.io/warden-supply-chain-security/docs/
 repo_url: https://github.com/rakshit-737/warden-supply-chain-security
 repo_name: rakshit-737/warden-supply-chain-security
 edit_uri: edit/main/docs/

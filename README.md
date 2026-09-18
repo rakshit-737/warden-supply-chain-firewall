@@ -11,7 +11,8 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rakshit-737/warden-supply-chain-security/badge)](https://scorecard.dev/viewer/?uri=github.com/rakshit-737/warden-supply-chain-security)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
-[Documentation](https://rakshit-737.github.io/warden-supply-chain-security/) ·
+[Website](https://rakshit-737.github.io/warden-supply-chain-security/) ·
+[Documentation](https://rakshit-737.github.io/warden-supply-chain-security/docs/) ·
 [Architecture](docs/ARCHITECTURE.md) ·
 [Threat Model](docs/THREAT_MODEL.md) ·
 [Data Model](docs/DATA_MODEL.md) ·
