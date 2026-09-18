@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Warden — Supply-Chain Firewall</title>
+<meta name="description" content="Warden decides whether a dependency is safe to install — from what its code does, where it came from, and what is known about it. Without ever running it.">
+<meta property="og:title" content="Warden — Software Supply-Chain Security">
+<meta property="og:description" content="Behavioural analysis of PyPI packages: 14 analyzers, attack-chain correlation, policy as code. Never executes package code.">
+<meta property="og:image" content="assets/social-preview.png">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f6f5fb; --surface: #ffffff; --surface-2: #eeecf7; --text: #16141f; --muted: #5b5870;
+  --line: #dcd8ea; --accent: #5b44d6; --accent-soft: #e7e2ff; --code-bg: #15131d; --code-text: #e6e3f3;
+  --allow: #1f8a55; --warn: #b7791f; --block: #c2362f;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1116; --surface: #161922; --surface-2: #1c2030; --text: #ecebf4; --muted: #9a98ad;
+    --line: #2a2e3d; --accent: #a898ff; --accent-soft: #231f3d; --code-bg: #0a0b10; --code-text: #e6e3f3;
+    --allow: #4cc38a; --warn: #e2a847; --block: #f06a62;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1116; --surface: #161922; --surface-2: #1c2030; --text: #ecebf4; --muted: #9a98ad;
+  --line: #2a2e3d; --accent: #a898ff; --accent-soft: #231f3d; --code-bg: #0a0b10; --code-text: #e6e3f3;
+  --allow: #4cc38a; --warn: #e2a847; --block: #f06a62;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 400 17px/1.6 "Barlow", system-ui, sans-serif; }
+h1, h2, h3 { font-family: "Barlow Semi Condensed", "Barlow", sans-serif; line-height: 1.1; margin: 0 0 .5em; }
+h1 { font-size: clamp(2.4rem, 6vw, 4.2rem); font-weight: 700; letter-spacing: -.01em; }
+h2 { font-size: clamp(1.7rem, 3.5vw, 2.4rem); font-weight: 700; }
+h3 { font-size: 1.25rem; font-weight: 600; }
+p { margin: 0 0 1em; }
+a { color: var(--accent); }
+code, pre { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: .85em; }
+:not(pre) > code { background: var(--surface-2); padding: .1em .35em; border-radius: 4px; }
+pre { background: var(--code-bg); color: var(--code-text); padding: 1rem 1.2rem; border-radius: 10px; overflow-x: auto; margin: 0; line-height: 1.55; }
+pre .c { color: #7d7a94; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+@media (min-width: 720px) { .wrap { padding: 0 32px; } }
+
+header.nav { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+header.nav .wrap { display: flex; align-items: center; gap: 1.5rem; height: 60px; }
+.brand { display: flex; align-items: center; gap: .55rem; font: 700 1.25rem "Barlow Semi Condensed", sans-serif; color: var(--text); text-decoration: none; }
+.brand img { width: 26px; height: 26px; }
+nav.links { display: flex; gap: 1.25rem; margin-left: auto; }
+nav.links a { color: var(--muted); text-decoration: none; font-weight: 500; }
+nav.links a:hover { color: var(--text); }
+@media (max-width: 720px) { nav.links a.opt { display: none; } }
+.theme-btn { background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 8px; width: 36px; height: 36px; cursor: pointer; font-size: 1rem; }
+
+.hero { padding: 72px 0 40px; }
+.eyebrow { font: 500 .8rem "JetBrains Mono", monospace; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); margin-bottom: 1rem; }
+.lede { font-size: 1.2rem; color: var(--muted); max-width: 640px; }
+.cta { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1.75rem 0 2.5rem; }
+.btn { display: inline-flex; align-items: center; gap: .4rem; padding: .7rem 1.2rem; border-radius: 8px; font-weight: 500; text-decoration: none; border: 1px solid var(--line); color: var(--text); background: var(--surface); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+:root[data-theme="dark"] .btn.primary { color: #13111d; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn.primary { color: #13111d; } }
+.shot { border-radius: 12px; border: 1px solid var(--line); width: 100%; height: auto; display: block; box-shadow: 0 20px 50px -20px rgba(20, 10, 60, .35); }
+
+section { padding: 72px 0; border-top: 1px solid var(--line); }
+.sub { color: var(--muted); max-width: 680px; margin-bottom: 2rem; }
+
+.verdicts { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
+.pill { font: 500 .8rem "JetBrains Mono", monospace; padding: .25rem .7rem; border-radius: 999px; border: 1px solid currentColor; }
+.pill.allow { color: var(--allow); } .pill.warn { color: var(--warn); } .pill.block { color: var(--block); }
+
+.grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 1.25rem 1.35rem; }
+.card p { color: var(--muted); margin: 0; font-size: .95rem; }
+.card code { font-size: .8em; }
+
+.matrix { width: 100%; border-collapse: collapse; max-width: 640px; background: var(--surface); border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+.matrix th, .matrix td { padding: .8rem 1rem; border-bottom: 1px solid var(--line); text-align: left; font-size: .95rem; }
+.matrix thead th { background: var(--surface-2); font-weight: 600; }
+.matrix td.hit { color: var(--accent); font-weight: 600; }
+
+.steps { display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.step h3 { display: flex; align-items: center; gap: .6rem; }
+.step h3 span { font: 500 .8rem "JetBrains Mono", monospace; background: var(--accent-soft); color: var(--accent); border-radius: 6px; padding: .15rem .45rem; }
+.step p { color: var(--muted); font-size: .95rem; }
+
+.split { display: grid; gap: 2rem; grid-template-columns: 1fr; align-items: start; }
+@media (min-width: 900px) { .split { grid-template-columns: 1fr 1fr; } }
+
+.tabs { display: flex; gap: .25rem; flex-wrap: wrap; margin-bottom: .75rem; }
+.tabs button { font: 500 .9rem "Barlow", sans-serif; background: var(--surface); color: var(--muted); border: 1px solid var(--line); padding: .45rem .9rem; border-radius: 8px; cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.panel[hidden] { display: none; }
+.panel p { color: var(--muted); font-size: .95rem; margin-top: .75rem; }
+
+.stat { font: 700 2.4rem "Barlow Semi Condensed", sans-serif; color: var(--accent); line-height: 1; }
+footer { padding: 40px 0 56px; border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: space-between; }
+footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="favicon.svg" alt="">Warden</a>
+    <nav class="links">
+      <a class="opt" href="#how">How it works</a>
+      <a href="#install">Install</a>
+      <a class="opt" href="#deploy">Deploy</a>
+      <a href="https://rakshit-737.github.io/warden-supply-chain-security/docs/">Docs</a>
+      <a href="https://github.com/rakshit-737/warden-supply-chain-security">GitHub</a>
+    </nav>
+    <button class="theme-btn" id="theme" aria-label="Toggle colour theme">◐</button>
+  </div>
+</header>
+
+<main id="top">
+  <div class="wrap hero">
+    <div class="eyebrow">Software supply-chain security · MIT licensed</div>
+    <h1>Know what a package does<br>before you install it.</h1>
+    <p class="lede">A single <code>pip install</code> runs third-party code with your privileges. Warden reads the real
+      distribution — its code, its install hooks, its provenance — and decides <strong>allow</strong>,
+      <strong>warn</strong> or <strong>block</strong>. It never executes package code.</p>
+    <div class="cta">
+      <a class="btn primary" href="#install">Get started</a>
+      <a class="btn" href="https://github.com/rakshit-737/warden-supply-chain-security/releases">Download a release</a>
+      <a class="btn" href="https://rakshit-737.github.io/warden-supply-chain-security/docs/">Read the docs</a>
+    </div>
+    <img class="shot" src="assets/scan-detail.png" width="1600" height="1000"
+         alt="Warden scan detail: a blocked package with its risk scores, policy reasons and the correlated attack chain">
+  </div>
+
+  <section>
+    <div class="wrap split">
+      <div>
+        <h2>A CVE scanner can't see this.</h2>
+        <p class="sub">There is no advisory for a malicious package nobody has reported yet. Typosquats, dependency
+          confusion, hijacked maintainer accounts and poisoned releases all look clean to a vulnerability database.
+          Warden asks a different question — <em>what does this code do, and who really published it?</em> — and keeps
+          vulnerability intelligence as a separate dimension.</p>
+        <div class="verdicts"><span class="pill allow">allow</span><span class="pill warn">warn</span><span class="pill block">block</span></div>
+      </div>
+      <table class="matrix">
+        <thead><tr><th></th><th>No known CVE</th><th>Known CVE</th></tr></thead>
+        <tbody>
+          <tr><th>Behaviourally benign</th><td>ordinary dependency</td><td>patch it</td></tr>
+          <tr><th>Behaviourally malicious</th><td class="hit">what Warden is for</td><td>both problems</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <h2>How a scan works</h2>
+      <p class="sub">For a <code>(name, version)</code> Warden fetches the published artifact, extracts it behind
+        hostile-archive guards, and runs every analyzer in parallel. Findings are correlated into attack chains, scored
+        across separate risk dimensions and judged by your policy.</p>
+      <div class="steps">
+        <div class="step"><h3><span>01</span>Acquire</h3><p>PyPI metadata and the real sdist / wheel, hash-verified. npm manifests and lockfiles are inventoried for SBOMs.</p></div>
+        <div class="step"><h3><span>02</span>Extract safely</h3><p>Path traversal, zip bombs, symlinks and oversized members are rejected. Nothing is imported or run.</p></div>
+        <div class="step"><h3><span>03</span>Analyze</h3><p>14 analyzers: AST behaviour, install hooks, obfuscation, typosquats, provenance, secrets, YARA, Semgrep, OSV / KEV / EPSS.</p></div>
+        <div class="step"><h3><span>04</span>Correlate</h3><p>Findings chain into named attacks — credential theft then exfiltration, install-time droppers — each mapped to MITRE ATT&amp;CK.</p></div>
+        <div class="step"><h3><span>05</span>Score</h3><p>Behavioural, vulnerability, provenance, integrity and more, kept separate. ML may sharpen a verdict but cannot invent one.</p></div>
+        <div class="step"><h3><span>06</span>Decide</h3><p>Policy as code sets thresholds and deny rules per environment. Known malware and hash mismatches are non-overridable.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>What's in the box</h2>
+      <p class="sub">Use the pieces you need: a CLI that works without a server, a GitHub Action for CI, or the full platform with a security console.</p>
+      <div class="grid">
+        <div class="card"><h3>CLI</h3><p>Project scans, CycloneDX / SPDX SBOMs, release diffs, container-image scans and policy validation — offline, no server needed.</p></div>
+        <div class="card"><h3>GitHub Action</h3><p>Manifest hygiene and dependency-confusion checks on every PR, uploaded as SARIF to code scanning.</p></div>
+        <div class="card"><h3>API &amp; console</h3><p>FastAPI backend and a React security console: dashboards, scan history, release diffs, policy exceptions with approvals.</p></div>
+        <div class="card"><h3>Monitoring</h3><p>A worker watches your dependencies for new releases and diffs their behaviour against the version you trust.</p></div>
+        <div class="card"><h3>Reports</h3><p>SARIF, Markdown and HTML reports; a hash-chained audit log for every decision.</p></div>
+        <div class="card"><h3>Hardened deploy</h3><p>Docker Compose with digest-pinned images, split networks, read-only filesystems and no default secrets.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <h2>Download &amp; use</h2>
+      <p class="sub">Requires Python 3.11+. Pick the path that fits.</p>
+      <div class="tabs" role="tablist">
+        <button role="tab" aria-selected="true" data-tab="cli">CLI</button>
+        <button role="tab" aria-selected="false" data-tab="action">GitHub Action</button>
+        <button role="tab" aria-selected="false" data-tab="stack">Full platform</button>
+        <button role="tab" aria-selected="false" data-tab="demo">Demo data</button>
+      </div>
+
+      <div class="panel" data-panel="cli">
+<pre><span class="c"># install from PyPI (or a wheel from the Releases page)</span>
+pip install warden-supply-chain-security
+
+<span class="c"># scan a project's manifests — nothing is installed or executed</span>
+warden project scan ./my-app
+
+<span class="c"># generate an SBOM</span>
+warden sbom generate ./my-app --format cyclonedx -o bom.json
+
+<span class="c"># what changed between two releases?</span>
+warden diff requests 2.31.0 2.32.0
+
+<span class="c"># validate a policy before loading it</span>
+warden policy validate policies/production.yaml</pre>
+        <p>Every command is in the <a href="https://rakshit-737.github.io/warden-supply-chain-security/docs/cli/">CLI reference</a>.</p>
+      </div>
+
+      <div class="panel" data-panel="action" hidden>
+<pre>permissions:
+  contents: read
+  security-events: write
+steps:
+  - uses: actions/checkout@&lt;sha&gt;
+    with: { persist-credentials: false }
+  - uses: rakshit-737/warden-supply-chain-security@&lt;sha&gt;
+    with:
+      path: .
+      fail-on: high</pre>
+        <p>Pin both actions to a full commit SHA. The SARIF report is uploaded before the gate is enforced, so a failing build still shows its alerts.</p>
+      </div>
+
+      <div class="panel" data-panel="stack" hidden>
+<pre>git clone https://github.com/rakshit-737/warden-supply-chain-security
+cd warden-supply-chain-security
+cp .env.example .env            <span class="c"># fill in every required secret</span>
+docker compose up -d --build    <span class="c"># console on http://127.0.0.1:8080</span>
+
+<span class="c"># optional</span>
+docker compose --profile worker up -d          <span class="c"># release monitoring</span>
+docker compose --profile observability up -d   <span class="c"># Prometheus + Grafana</span></pre>
+        <p>The stack refuses to start while any secret is unset. Hardening and scaling notes live in <a href="https://github.com/rakshit-737/warden-supply-chain-security/blob/main/deploy/README.md">deploy/README.md</a>.</p>
+      </div>
+
+      <div class="panel" data-panel="demo" hidden>
+<pre>git clone https://github.com/rakshit-737/warden-supply-chain-security
+cd warden-supply-chain-security
+cd backend &amp;&amp; pip install -r requirements-dev.txt &amp;&amp; cd ..
+make train   <span class="c"># build the ML model artifact</span>
+make demo    <span class="c"># fill a local SQLite DB with real results from inert samples</span>
+make run     <span class="c"># API on http://localhost:8000</span>
+
+<span class="c"># second terminal</span>
+cd frontend &amp;&amp; npm install &amp;&amp; npm run dev   <span class="c"># console on http://localhost:5173</span></pre>
+        <p>Demo packages are hand-written, inert samples named <code>demo-…</code> — not real PyPI packages.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="deploy">
+    <div class="wrap">
+      <h2>Where to run it</h2>
+      <p class="sub">The CLI and Action need no hosting. The platform is a long-running service with a database, a cache and a worker, so it needs a container host.</p>
+      <div class="grid">
+        <div class="card"><h3>Your server / VM</h3><p><code>docker compose up</code> on any Linux host. Recommended: it is the configuration Warden is hardened and tested for.</p></div>
+        <div class="card"><h3>Container platforms</h3><p>Render, Fly.io, Railway, ECS or Kubernetes: run the API and worker images with managed PostgreSQL and Redis.</p></div>
+        <div class="card"><h3>Vercel / static hosts</h3><p>Only the console's static build fits. Point its <code>/api</code> rewrite at a backend hosted elsewhere — serverless functions can't run the scanner.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap split">
+      <div>
+        <h2>Measured, not claimed</h2>
+        <p class="sub">A benchmark of 22 inert, hand-written packages runs through the real pipeline on every change. Warden's analyzers were also run against established PyPI projects — which caught an ML model that scored ordinary libraries as malicious, and led to the guardrail that stops the model inventing a verdict.</p>
+        <p class="sub" style="font-size:.9rem">The corpus is small and synthetic: a regression baseline, not a real-world detection rate. <a href="https://rakshit-737.github.io/warden-supply-chain-security/docs/BENCHMARK/">Read the benchmark</a>.</p>
+      </div>
+      <div class="grid">
+        <div class="card"><div class="stat">13 / 14</div><p>malicious samples detected</p></div>
+        <div class="card"><div class="stat">0 / 8</div><p>benign look-alikes blocked (1 warned)</p></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Warden · MIT License</span>
+    <span>
+      <a href="https://github.com/rakshit-737/warden-supply-chain-security">Source</a> ·
+      <a href="https://rakshit-737.github.io/warden-supply-chain-security/docs/">Docs</a> ·
+      <a href="https://github.com/rakshit-737/warden-supply-chain-security/blob/main/SECURITY.md">Security policy</a>
+    </span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  try { var saved = localStorage.getItem("warden-theme"); if (saved) root.dataset.theme = saved; } catch (e) {}
+  document.getElementById("theme").addEventListener("click", function () {
+    var dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = dark ? "light" : "dark";
+    try { localStorage.setItem("warden-theme", root.dataset.theme); } catch (e) {}
+  });
+  var tabs = document.querySelectorAll("[data-tab]");
+  tabs.forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      tabs.forEach(function (t) { t.setAttribute("aria-selected", t === tab ? "true" : "false"); });
+      document.querySelectorAll("[data-panel]").forEach(function (p) { p.hidden = p.dataset.panel !== tab.dataset.tab; });
+    });
+  });
+})();
+</script>
+</body>
+</html>
